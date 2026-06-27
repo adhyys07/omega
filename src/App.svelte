@@ -1,7 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-
-  // --- Countdown ---
   const target = new Date('2026-07-27T00:00:00').getTime()
   let d = $state('00')
   let h = $state('00')
@@ -25,21 +23,55 @@
     return () => clearInterval(iv)
   })
 
+  // --- Auth ---
+  let user = $state<null | { name?: string }>(null)
+  let authReady = $state(false)
+
+  onMount(async () => {
+    try {
+      const res = await fetch('/api/auth/me')
+      if (res.ok) user = await res.json()
+    } catch {
+      // not signed in / backend not running yet
+    } finally {
+      authReady = true
+    }
+  })
+
   // --- Signup ---
   let email = $state('')
   let signedUp = $state(false)
   let invalid = $state(false)
+  let loading = $state(false)
 
-  function signup() {
+  async function signup() {
     const value = email.trim()
     if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
       invalid = true
       return
     }
     invalid = false
-    signedUp = true
+    loading = true
+    try {
+      const res = await fetch('/api/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: value }),
+      })
+      if (!res.ok) throw new Error('Failed to sign up')
+      signedUp = true
+    } catch (error) {
+      console.error(error)
+      invalid = true
+    } finally {
+      loading = false
+    }
   }
 
+  function scrollTo(id: string, e: MouseEvent) {
+    e.preventDefault()
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
   // --- Data ---
   const heroDecos = [
     { style: 'left:8%; top:22%; font-size:2.8rem; color:var(--orange); transform:rotate(-14deg);', char: '✦' },
@@ -120,16 +152,17 @@
   const rules = [
     { lead: 'No double dipping.', rest: ' Omega submissions cannot count toward any other YSWS program. No exceptions.', last: false },
     { lead: '20 hours minimum per project.', rest: ' Hackatime logs required. Reviewers verify every session.', last: false },
-    { lead: 'Max 2 projects', rest: ' per participant over the two-month window.', last: false },
+    { lead: 'Max 3 projects', rest: ' per participant over the two-month window.', last: false },
     { lead: 'Fraud = ban.', rest: ' Fulfillment cancelled, case sent to the Hack Club fraud team. Severity determines the ban length.', last: true },
   ]
 
   const faqs = [
-    { q: 'Do I need to build Android AND iOS?', a: "Yes — that's the Omega challenge. Both platforms, at least 20 hours each. No shortcuts." },
+    { q: 'Do I need to build Android AND iOS?', a: "You can build for both, it is not compulsory to create apps for both the platforms" },
     { q: 'How does shop currency work?', a: 'Approved hours × tier multiplier = currency. Roughly $4–6 per hour. Spend it on anything in the shop.' },
-    { q: 'Can I also submit to Cider or Gemini?', a: 'No. No double dipping with any other YSWS program whatsoever.' },
+    { q: 'Can I also submit to other YSWS?', a: 'No. No double dipping with any other YSWS program whatsoever.' },
     { q: "Who's eligible?", a: 'High schoolers or younger. 100% free — funded by Hack Club donors.' },
     { q: 'How much does it cost?', a: 'Nothing. The entire program is free, funded by donations to The Hack Foundation.' },
+
   ]
 
   const footerLinks = [
@@ -151,18 +184,22 @@
   <div class="halftone"></div>
 
   <!-- Flag -->
-  <a href="https://hackclub.com/"><img style="position: absolute; top: 0; left: 10px; border: 0; width: 256px; z-index: 999;" src="https://assets.hackclub.com/banners/2026.svg" alt="Hack Club"/></a>
+  <a href="https://hackclub.com/"><img style="position: absolute; top: 0; left: 10px; border: 0; width: 226px; z-index: 999;" src="https://assets.hackclub.com/flag-orpheus-top.svg" alt="Hack Club"/></a>
 
   <!-- Hero -->
-  <div style="text-align:center; padding:96px 24px 56px; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative;">
+  <div style="text-align:center; padding:clamp(60px,7vh,92px) 24px clamp(24px,4vh,52px); min-height:100svh; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative;">
     {#each heroDecos as deco}
       <div class="hero-deco" style="position:absolute; {deco.style} pointer-events:none;">{deco.char}</div>
     {/each}
 
-    <div class="hero-deco" style="position:absolute; left:6%; top:44%; background:#2f6db0; color:#fff; border:2.5px solid #1c1714; border-radius:12px 7px 13px 6px/6px 13px 7px 12px; padding:9px 15px; font-family:'Syne',sans-serif; font-weight:800; font-size:.82rem; transform:rotate(-8deg); box-shadow:4px 4px 0 #1c1714;">Android + iOS</div>
+    <!-- Android logo sticker -->
+    <div class="hero-deco" style="position:absolute; left:6%; top:42%; width:118px; height:118px; border:2.5px solid #1c1714; border-radius:50%; display:flex; align-items:center; justify-content:center; transform:rotate(-8deg); background:rgba(74,150,80,.14); box-shadow:5px 6px 0 rgba(28,23,20,.16);" aria-label="Android">
+      <svg width="62" height="62" viewBox="0 0 24 24" fill="#3d7a40"><path d="M17.6 9.48l1.84-3.18a.39.39 0 0 0-.14-.53.39.39 0 0 0-.53.14l-1.86 3.22a11.43 11.43 0 0 0-9.82 0L5.23 5.91a.39.39 0 0 0-.53-.14.39.39 0 0 0-.14.53L6.4 9.48A10.81 10.81 0 0 0 1 18h22a10.81 10.81 0 0 0-5.4-8.52ZM7 15.25a1.25 1.25 0 1 1 1.25-1.25A1.25 1.25 0 0 1 7 15.25Zm10 0A1.25 1.25 0 1 1 18.25 14 1.25 1.25 0 0 1 17 15.25Z"></path></svg>
+    </div>
 
-    <div class="hero-deco" style="position:absolute; right:6%; top:38%; width:112px; height:112px; border:2.5px solid #1c1714; border-radius:50%; display:flex; align-items:center; justify-content:center; text-align:center; transform:rotate(-13deg); background:rgba(255,69,0,.09); box-shadow:4px 5px 0 rgba(28,23,20,.16);">
-      <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.05rem; letter-spacing:.04em; text-transform:uppercase; color:#c2451a; line-height:1.05;">100%<br>Free<br><span style="font-size:.62rem; color:#1c1714; letter-spacing:.08em;">to enter</span></div>
+    <!-- Apple logo sticker -->
+    <div class="hero-deco" style="position:absolute; right:6%; top:38%; width:118px; height:118px; border:2.5px solid #1c1714; border-radius:50%; display:flex; align-items:center; justify-content:center; transform:rotate(-13deg); background:rgba(28,23,20,.06); box-shadow:5px 6px 0 rgba(28,23,20,.16);" aria-label="Apple">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="#1c1714"><path d="M17.05 12.54c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.88 2.65 3.22 2.6 1.29-.05 1.78-.83 3.34-.83 1.56 0 2 .83 3.37.81 1.39-.03 2.27-1.27 3.12-2.53.98-1.45 1.39-2.85 1.41-2.92-.03-.01-2.7-1.04-2.73-4.13Zm-2.59-7.59c.71-.86 1.19-2.06 1.06-3.25-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.15 1.14.09 2.3-.58 3.01-1.44Z"></path></svg>
     </div>
 
     <div class="hero-deco" style="position:absolute; left:18%; bottom:13%; transform:rotate(-5deg); text-align:left; pointer-events:none;">
@@ -170,45 +207,49 @@
       <svg width="78" height="50" viewBox="0 0 78 50" fill="none"><path d="M4 6 C 30 0 56 14 70 38" stroke="#1c1714" stroke-width="2.5" fill="none" stroke-linecap="round"></path><path d="M70 38 l-13 -2 M70 38 l-2 -13" stroke="#1c1714" stroke-width="2.5" fill="none" stroke-linecap="round"></path></svg>
     </div>
 
-    <div style="display:inline-flex; align-items:center; gap:8px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:100px; padding:8px 18px; font-size:.7rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--orange); box-shadow:3px 3px 0 rgba(28,23,20,.13); transform:rotate(-1deg); margin-bottom:30px;">
+    <div style="display:inline-flex; align-items:center; gap:8px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:100px; padding:8px 18px; font-size:.7rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--orange); box-shadow:3px 3px 0 rgba(28,23,20,.13); transform:rotate(-1deg); margin-bottom:clamp(14px,2.4vh,30px);">
       <span style="color:var(--orange); font-size:.85rem; line-height:1;">✦</span>
-      You Ship, We Ship · YSWS 2026
+      You Ship, We Ship · 2026
     </div>
 
-    <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(5rem,21vw,10rem); letter-spacing:-.03em; line-height:.82; text-shadow:4px 4px 0 rgba(255,69,0,.22), -3px -3px 0 rgba(47,109,176,.16);">
+    <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:min(clamp(4rem,16vw,8.5rem),18vh); letter-spacing:-.03em; line-height:.82; text-shadow:4px 4px 0 rgba(255,69,0,.22), -3px -3px 0 rgba(47,109,176,.16);">
       <span style="color:var(--orange);">Ω</span><span style="color:#1c1714;">mega</span>
     </div>
 
-    <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin:22px 0 16px;">
-      <span style="height:2.5px; width:46px; background:#1c1714; border-radius:2px;"></span>
-      <span style="font-size:.7rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:#1c1714;">Dual Platform · Build &amp; Ship · Real Rewards</span>
-      <span style="height:2.5px; width:46px; background:#1c1714; border-radius:2px;"></span>
+    <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin:clamp(8px,1.4vh,22px) 0 clamp(6px,1vh,16px);">
+
     </div>
 
-    <h1 style="font-family:'Syne',sans-serif; font-weight:700; font-size:clamp(1.7rem,3.8vw,2.5rem); color:#1c1714; max-width:660px; margin:0 auto 18px; line-height:1.26;">
+    <h1 style="font-family:'Syne',sans-serif; font-weight:700; font-size:clamp(1.3rem,3vw,2rem); color:#1c1714; max-width:600px; margin:0 auto clamp(8px,1.2vh,18px); line-height:1.25;">
       Build Android + iOS apps. Get rewarded for <span style="background:linear-gradient(104deg, rgba(255,107,53,0) 0%, rgba(255,107,53,.55) 5%, rgba(255,107,53,.6) 95%, rgba(255,107,53,0) 100%); padding:0 .12em; -webkit-box-decoration-break:clone; box-decoration-break:clone;">both.</span>
     </h1>
-    <p style="font-size:1.15rem; color:#5b4f44; max-width:540px; margin:0 auto 30px; line-height:1.72;">Ship apps across two platforms, earn badges, and trade your approved hours in the Omega shop.</p>
+    <p style="font-size:.95rem; color:#5b4f44; max-width:500px; margin:0 auto clamp(12px,1.8vh,28px); line-height:1.6;">Ship apps across two platforms, earn badges, and trade your approved hours in the Omega shop.</p>
 
-    <div style="display:inline-flex; align-items:center; gap:8px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:100px; padding:12px 26px; font-weight:700; font-size:1rem; color:#1c1714; box-shadow:3px 3px 0 rgba(28,23,20,.13); transform:rotate(.6deg); margin-bottom:34px;">
+    <div style="display:inline-flex; align-items:center; gap:8px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:100px; padding:12px 26px; font-weight:700; font-size:1rem; color:#1c1714; box-shadow:3px 3px 0 rgba(28,23,20,.13); transform:rotate(.6deg); margin-bottom:clamp(12px,2vh,34px);">
       <span style="color:var(--orange);">▣</span> Jul 27 – Sep 15, 2026 &nbsp;·&nbsp; ~2 months
     </div>
 
     <!-- Countdown -->
-    <div style="display:flex; justify-content:center; align-items:flex-start; gap:10px; margin-bottom:32px; flex-wrap:wrap;">
+    <div style="display:flex; justify-content:center; align-items:flex-start; gap:10px; margin-bottom:clamp(14px,2.2vh,32px); flex-wrap:wrap;">
       {#each cdUnits as unit, i}
-        <div style="background:#fbf4e6; border:2.5px solid #1c1714; border-radius:{unit.radius}; padding:16px 22px; min-width:92px; box-shadow:4px 4px 0 rgba(28,23,20,.13); transform:rotate({unit.rot});">
-          <div style="font-family:'Syne',sans-serif; font-size:2.7rem; font-weight:800; color:var(--orange); line-height:1;">{unit.v}</div>
+        <div style="background:#fbf4e6; border:2.5px solid #1c1714; border-radius:{unit.radius}; padding:clamp(10px,1.6vh,16px) 22px; min-width:92px; box-shadow:4px 4px 0 rgba(28,23,20,.13); transform:rotate({unit.rot});">
+          <div style="font-family:'Syne',sans-serif; font-size:clamp(2rem,4.5vh,2.7rem); font-weight:800; color:var(--orange); line-height:1;">{unit.v}</div>
           <div style="font-size:.66rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#5b4f44; margin-top:6px;">{unit.label}</div>
         </div>
         {#if i < cdUnits.length - 1}
-          <div style="font-family:'Syne',sans-serif; font-size:2.3rem; color:var(--orange); padding-top:18px;">✦</div>
+          <div style="font-family:'Syne',sans-serif; font-size:2rem; color:var(--orange); padding-top:14px;">✦</div>
         {/if}
       {/each}
     </div>
 
     <div style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
-      <a href="#submit" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 #1c1714;">→ Submit your project</a>
+      {#if !authReady}
+        <span class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; opacity:.6;">…</span>
+      {:else if user}
+        <a href="#submit" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 #1c1714;">→ Submit your project</a>
+      {:else}
+        <a href="/api/auth/login" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 #1c1714;">Sign in with Hack Club</a>
+      {/if}
       <a href="#how" class="btn-ghost" style="display:inline-flex; align-items:center; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 rgba(28,23,20,.2);">How it works</a>
     </div>
   </div>
@@ -228,7 +269,7 @@
 
   <!-- How it works -->
   <div id="how" style="max-width:760px; margin:0 auto; padding:66px 24px;">
-    <div class="eyebrow">✦ How it works</div>
+    <a href="#how" onclick={(e)=> scrollTo('how', e)} class="btn-ghost" style="..."><div class="eyebrow">✦ How it works</div></a>
     <h2 class="sec-h">Your launch sequence</h2>
     <svg width="220" height="11" viewBox="0 0 220 11" fill="none" style="display:block; margin-bottom:16px;"><path d="M3 7 Q 28 2 52 6 T 104 6 T 156 6 T 214 5" stroke="var(--orange)" stroke-width="3" fill="none" stroke-linecap="round"></path></svg>
     <p style="font-size:.95rem; color:#5b4f44; margin-bottom:28px; line-height:1.7; max-width:560px;">Build apps on Android and iOS. Reviewers approve your hours, you earn shop currency to spend on what you actually want.</p>
@@ -344,7 +385,6 @@
             </div>
             <div style="text-align:right;">
               <div style="font-family:'Syne',sans-serif; font-size:1.7rem; font-weight:800; color:{t.multColor}; line-height:1;">{t.mult}</div>
-              <div style="font-size:.72rem; color:{t.rateColor}; font-weight:600; margin-top:3px;">{t.rate}</div>
             </div>
           </div>
         {/each}
@@ -403,14 +443,15 @@
         />
         <button
           onclick={signup}
+          disabled={loading}
           class="signup-btn"
-          style="background:#1c1714; color:#fff; border:2.5px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; padding:14px 24px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.92rem; cursor:pointer; box-shadow:4px 4px 0 rgba(28,23,20,.35);"
-        >Sign up →</button>
+          style="background:#1c1714; color:#fff; border:2.5px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; padding:14px 24px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.92rem; cursor:{loading ? 'wait' : 'pointer'}; opacity:{loading ? '.7' : '1'}; box-shadow:4px 4px 0 rgba(28,23,20,.35);"
+        >{loading ? 'Signing up…' : 'Sign up →'}</button>
       </div>
     {/if}
 
     <div style="margin-top:16px;">
-      <a href="https://hackclub.com/slack" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px; color:rgba(255,255,255,.9); font-size:.85rem; font-weight:700; text-decoration:none;">Join Slack · <span style="color:#fff; text-decoration:underline; text-decoration-style:wavy; text-underline-offset:3px;">#omega</span></a>
+      <a href="https://hackclub.enterprise.slack.com/archives/C0BAGGPHLAW" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px; color:rgba(255,255,255,.9); font-size:.85rem; font-weight:700; text-decoration:none;">Join Slack · <span style="color:#fff; text-decoration:underline; text-decoration-style:wavy; text-underline-offset:3px;">#omega</span></a>
     </div>
   </div>
 
