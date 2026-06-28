@@ -2,12 +2,19 @@ import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import { pool, migrate } from './db.ts'
+import cookie from '@fastify/cookie'
+import authRoutes from './auth.ts'
 
 const app = Fastify({ logger: true })
 
 await app.register(cors, {
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
 })
+
+await app.register(cookie, {
+  secret: process.env.SESSION_SECRET!})
+
+await app.register(authRoutes)
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 

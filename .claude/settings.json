@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Bash(echo \"=== exit: $? ===\")",
+      "Bash(GIT_TERMINAL_PROMPT=0 GIT_CURL_VERBOSE=0 git push -v origin main)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(git rev-list *)",
+      "Bash(git cat-file *)",
+      "Bash(sort -k2 -n -r)",
+      "Bash(GIT_TRACE_PACKET=1 git push --porcelain origin main)",
+      "Bash(GIT_CURL_VERBOSE=1 git push origin main)",
+      "Bash(git fsck *)",
+      "Bash(git pack-objects *)",
+      "Bash(echo \"pack-exit=$?\")",
+      "Bash(GIT_TRACE_CURL=1 git push origin main)",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).dependencies\\)\")",
+      "Bash(node --env-file=.env -e \"console.log\\('redirect_uri =', JSON.stringify\\(process.env.HC_REDIRECT_URI\\)\\); console.log\\('client_id    =', process.env.HC_CLIENT_ID\\)\")",
+      "Bash(curl -s \"https://cachet.dunkirk.sh/swagger.json\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\('title:',j.info&&j.info.title\\);for\\(const p in j.paths\\){for\\(const m in j.paths[p]\\){const o=j.paths[p][m];console.log\\(m.toUpperCase\\(\\),p,'-',o.summary||''\\);}}}\\)\")"
+    ]
+  }
+}

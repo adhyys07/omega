@@ -278,7 +278,7 @@
       <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; font-weight:700; font-size:.8rem; background:rgba(255,107,53,.14); color:#c2451a; transform:rotate(-1deg);">▲ Android app</span>
       <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-weight:700; font-size:.8rem; background:rgba(255,107,53,.14); color:#c2451a; transform:rotate(.8deg);">◉ iOS app</span>
       <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; font-weight:700; font-size:.8rem; background:rgba(47,109,176,.13); color:#2f6db0; transform:rotate(-.6deg);">◷ 20+ hrs each</span>
-      <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-weight:700; font-size:.8rem; background:rgba(47,109,176,.13); color:#2f6db0; transform:rotate(1deg);">❥ Max 2 projects</span>
+      <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-weight:700; font-size:.8rem; background:rgba(47,109,176,.13); color:#2f6db0; transform:rotate(1deg);">❥ Max 3 projects</span>
     </div>
 
     <div style="display:flex; flex-direction:column;">

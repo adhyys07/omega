@@ -7,10 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.server.json",
     "server": "node --env-file=.env --import tsx server/index.ts",
     "server:watch": "node --env-file=.env --import tsx --watch server/index.ts"
-    
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
@@ -24,7 +23,9 @@
     "vite": "^8.0.12"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
+    "cookie": "^2.0.0",
     "dotenv": "^17.4.2",
     "fastify": "^5.8.5",
     "pg": "^8.22.0"
