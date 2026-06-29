@@ -34,9 +34,12 @@
     verification_status: string | null
     ysws_eligible: boolean | null
     slack_id: string | null
+    role: 'user' | 'reviewer' | 'admin'
     created_at: string
     last_login: string
   }
+
+  const ROLE_OPTIONS = ['user', 'reviewer', 'admin'] as const
 
   let status = $state<'loading' | 'forbidden' | 'unauth' | 'ready' | 'error'>('loading')
   let users = $state<AdminUser[]>([])
@@ -132,6 +135,17 @@
     } catch {
       itemsStatus = 'error'
     }
+  }
+
+  async function changeRole(u: AdminUser, role: string){
+    const prev = u.role
+    u.role = role as AdminUser['role']
+    const res = await fetch(`/api/admin/users/${encodeURIComponent(u.sub)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    })
+    if (!res.ok) u.role = prev
   }
 
   async function addItem() {
@@ -257,6 +271,7 @@
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Slack ID</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Verified</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">YSWS</th>
+                <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Role</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Last login</th>
               </tr>
             </thead>
@@ -283,6 +298,15 @@
                   <td style="padding:11px 14px; color:#5b4f44; font-family:monospace;">{u.slack_id ?? '—'}</td>
                   <td style="padding:11px 14px; color:#5b4f44;">{u.verification_status ?? '—'}</td>
                   <td style="padding:11px 14px;">{u.ysws_eligible ? '✓' : '—'}</td>
+                  <td style="padding:11px 14px;">
+                    <select
+                      value={u.role}
+                      onchange={(e) => changeRole(u, e.currentTarget.value)}
+                      style="border:2px solid #1c1714; border-radius:6px; padding:4px 8px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.75rem; background:{u.role === 'reviewer' ? 'rgba(47,109,176,.14)' : u.role === 'admin' ? 'rgba(255,69,0,.16)' : '#fbf4e6'}; color:#1c1714; cursor:pointer;"
+                    >
+                      {#each ROLE_OPTIONS as r}<option value={r}>{r}</option>{/each}
+                    </select>
+                  </td>
                   <td style="padding:11px 14px; color:#5b4f44; white-space:nowrap;">{fmt(u.last_login)}</td>
                 </tr>
               {/each}

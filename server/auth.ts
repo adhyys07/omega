@@ -1,7 +1,7 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import "@fastify/cookie"; // loads the type augmentation for reply.setCookie / req.cookies / req.unsignCookie
 import crypto from "node:crypto";
-import { upsertAuthUser } from "./db.ts";
+import { upsertAuthUser, getAuthUserRole } from "./db.ts";
 
 const ISSUER = 'https://auth.hackclub.com';
 const AUTHORIZE_URL = `${ISSUER}/oauth/authorize`;
@@ -13,6 +13,9 @@ const SCOPES = 'openid profile email verification_status slack_id';
 const STATE_COOKIE = 'hc_oauth_state';
 const SESSION_COOKIE = 'hc_session';
 const isProd = process.env.NODE_ENV === 'production';
+
+export const ROLES = ['user', 'reviewer', 'admin'] as const;
+export type Role = (typeof ROLES)[number];
 
 export type HcUser = {
     sub: string;
@@ -117,7 +120,8 @@ export default async function authRoutes(app: FastifyInstance) {
         if (!user) {
             return reply.code(401).send({ error: 'Not authenticated' });
         }
-        return user;
+        const role = isAdmin(user) ? 'admin' : await getAuthUserRole(user.sub);
+        return { ...user, role };
     })
 
     app.post('/api/auth/logout', async (_req, reply) => {
@@ -139,6 +143,20 @@ export function getSessionUser(req: FastifyRequest): HcUser | null {
         return null;
     }
 }
+
+export function requireRole(...allowed: Role[]) {
+    return async (req: FastifyRequest, reply: FastifyReply) => {
+        const user = getSessionUser(req);
+        if (!user) return reply.code(401).send({ error: 'Not authenticated' });
+        if (isAdmin(user)) return; // env allow-list = full access
+        const role = await getAuthUserRole(user.sub);
+        if (role === 'admin') return; // DB admin = full access
+        if (!allowed.includes(role as Role)) {
+            return reply.code(403).send({ error: 'Forbidden' });
+        }
+    };
+}
+
 
 const ADMIN_SLACK_IDS = (process.env.ADMIN_SLACK_IDS ?? '')
     .split(',').map((s) => s.trim()).filter(Boolean);

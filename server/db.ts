@@ -84,12 +84,12 @@ export async function migrate() {
     `);
 }
 
-export async function getAuthUserBySub(sub: string): Promise<string> {
+export async function getAuthUserRole(sub: string): Promise<string> {
     const { rows } = await pool.query(`SELECT role FROM auth_users WHERE sub = $1`, [sub]);
     return rows[0]?.role ?? 'user';
 }
 
-export async function getAuthUserByEmail(sub: string, role:string): Promise<boolean> {
+export async function setAuthUserRole(sub: string, role: string): Promise<boolean> {
     const { rowCount } = await pool.query(
         `UPDATE auth_users SET role = $1 WHERE sub = $2`,
         [role, sub],

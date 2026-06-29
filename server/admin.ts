@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { getSessionUser, isAdmin } from "./auth.ts";
-import { pool } from "./db.ts";
+import { getSessionUser, isAdmin, ROLES, type Role } from "./auth.ts";
+import { pool, setAuthUserRole } from "./db.ts";
 
 export default async function adminRoutes(app: FastifyInstance) {
     // Gate every admin route: 401 if not signed in, 403 if signed in but not an admin.
@@ -80,6 +80,18 @@ export default async function adminRoutes(app: FastifyInstance) {
         return rows[0];
     });
 
+    app.patch('/api/admin/users/:sub', { preHandler: requireAdmin }, async (req, reply) => {
+        const { sub } = req.params as { sub: string };
+        const { role } = (req.body ?? {}) as { role?: string };
+        if (!role || !ROLES.includes(role as Role)) {
+            return reply.code(400).send({ error: `role must be one of ${ROLES.join(', ')}` });
+        }
+        const ok = await setAuthUserRole(sub, role as Role);
+        if (!ok) { return reply.code(404).send({ error: 'User not found' }); }
+        return { sub, role };
+    });
+
+
     app.delete('/api/admin/items/:id', { preHandler: requireAdmin }, async (req, reply) => {
         const { id } = req.params as { id: string };
         const { rowCount } = await pool.query(`DELETE FROM shop_items WHERE id = $1`, [Number(id)]);
@@ -89,7 +101,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     // Everyone who has signed in via Hack Club auth.
     app.get('/api/admin/users', { preHandler: requireAdmin }, async () => {
         const { rows } = await pool.query(
-            `SELECT sub, email, name, verification_status, ysws_eligible, slack_id, created_at, last_login
+            `SELECT sub, email, name, verification_status, ysws_eligible, slack_id, role, created_at, last_login
                FROM auth_users
               ORDER BY last_login DESC`,
         );
