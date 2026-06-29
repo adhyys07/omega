@@ -13,11 +13,12 @@ export async function migrateAuth(){
             verification_status TEXT,
             ysws_eligible BOOLEAN,
             slack_id TEXT,
+            role TEXT NOT NULL DEFAULT 'user',
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             last_login TIMESTAMPTZ NOT NULL DEFAULT now()
         );
     `);
-
+    await pool.query(`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`)
 }
 
 export async function upsertAuthUser(u: HcUser) {
@@ -81,4 +82,17 @@ export async function migrate() {
             created_at TIMESTAMP DEFAULT NOW()
         );
     `);
+}
+
+export async function getAuthUserBySub(sub: string): Promise<string> {
+    const { rows } = await pool.query(`SELECT role FROM auth_users WHERE sub = $1`, [sub]);
+    return rows[0]?.role ?? 'user';
+}
+
+export async function getAuthUserByEmail(sub: string, role:string): Promise<boolean> {
+    const { rowCount } = await pool.query(
+        `UPDATE auth_users SET role = $1 WHERE sub = $2`,
+        [role, sub],
+    );
+    return (rowCount ?? 0) > 0;
 }

@@ -1,6 +1,7 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import "@fastify/cookie"; // loads the type augmentation for reply.setCookie / req.cookies / req.unsignCookie
 import crypto from "node:crypto";
+import { upsertAuthUser } from "./db.ts";
 
 const ISSUER = 'https://auth.hackclub.com';
 const AUTHORIZE_URL = `${ISSUER}/oauth/authorize`;
@@ -88,6 +89,13 @@ export default async function authRoutes(app: FastifyInstance) {
             const user = (await userRes.json()) as HcUser;
             req.log.info({ userinfo: user }, 'userinfo response') // DEBUG
 
+            // Persist the user so the admin panel can list everyone who has signed in.
+            try {
+                await upsertAuthUser(user)
+            } catch (err) {
+                req.log.error(err, 'failed to persist auth user')
+            }
+
             reply.setCookie(SESSION_COOKIE, JSON.stringify(user), {
                 path: '/',
                 httpOnly: true,
@@ -105,22 +113,44 @@ export default async function authRoutes(app: FastifyInstance) {
     })
 
     app.get('/api/auth/me', async (req, reply) => {
-        const raw = req.cookies[SESSION_COOKIE];
-        const unsigned = raw ? req.unsignCookie(raw) : null;
-        if (!unsigned?.valid || !unsigned.value) {
+        const user = getSessionUser(req);
+        if (!user) {
             return reply.code(401).send({ error: 'Not authenticated' });
         }
-        try {
-            return JSON.parse(unsigned.value) as HcUser;
-        }
-        catch {
-            return reply.code(401).send({ error: 'Bad Session' });
-        }
+        return user;
     })
 
     app.post('/api/auth/logout', async (_req, reply) => {
         reply.clearCookie(SESSION_COOKIE, { path: '/' });
         return  { ok : true };
     })
+}
+
+// --- Shared session / admin helpers (used by the admin routes) ---
+
+/** Parse and verify the signed session cookie, returning the user or null. */
+export function getSessionUser(req: FastifyRequest): HcUser | null {
+    const raw = req.cookies[SESSION_COOKIE];
+    const unsigned = raw ? req.unsignCookie(raw) : null;
+    if (!unsigned?.valid || !unsigned.value) return null;
+    try {
+        return JSON.parse(unsigned.value) as HcUser;
+    } catch {
+        return null;
+    }
+}
+
+const ADMIN_SLACK_IDS = (process.env.ADMIN_SLACK_IDS ?? '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? '')
+    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+
+/** Admin access is granted by matching the signed-in user's slack_id or email
+ *  against the ADMIN_SLACK_IDS / ADMIN_EMAILS env allow-lists. */
+export function isAdmin(user: HcUser | null): boolean {
+    if (!user) return false;
+    if (user.slack_id && ADMIN_SLACK_IDS.includes(user.slack_id)) return true;
+    if (user.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) return true;
+    return false;
 }
 

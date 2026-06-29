@@ -1,9 +1,10 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
-import { pool, migrate, migrateShop, seedShop } from './db.ts'
+import { pool, migrate, migrateAuth, migrateShop, seedShop } from './db.ts'
 import cookie from '@fastify/cookie'
 import authRoutes from './auth.ts'
+import adminRoutes from './admin.ts'
 
 const app = Fastify({ logger: true })
 
@@ -15,6 +16,7 @@ await app.register(cookie, {
   secret: process.env.SESSION_SECRET!})
 
 await app.register(authRoutes)
+await app.register(adminRoutes)
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -60,6 +62,7 @@ app.get('/api/signup', async () => {
   return { count: rows[0].count }
 })
 
+await migrateAuth()
 await migrateShop()
 await seedShop()
 await migrate()

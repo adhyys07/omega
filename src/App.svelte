@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import Shop from './Shop.svelte'
+  import Admin from './Admin.svelte'
   const target = new Date('2026-07-27T00:00:00').getTime()
   let d = $state('00')
   let h = $state('00')
@@ -29,11 +30,19 @@
   // --- Auth ---
   let user = $state<null | { name?: string; slack_id?: string }>(null)
   let authReady = $state(false)
+  let isAdmin = $state(false)
 
   onMount(async () => {
     try {
       const res = await fetch('/api/auth/me')
-      if (res.ok) user = await res.json()
+      if (res.ok) {
+        user = await res.json()
+        // Only signed-in users can be admins; cheap check, ignore failures.
+        try {
+          const a = await fetch('/api/admin/me')
+          isAdmin = a.ok
+        } catch {}
+      }
     } catch {
       // not signed in / backend not running yet
     } finally {
@@ -198,6 +207,8 @@
 
 {#if path === '/shop'}
   <Shop />
+{:else if path.startsWith('/admin')}
+  <Admin />
 {:else}
 <div class="omega">
   <!-- paper grain overlay -->
@@ -235,6 +246,13 @@
 
       {#if menuOpen}
       <div style="position:absolute; top:84px; right:0; min-width:180px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:14px 9px 15px 10px/10px 15px 9px 14px; box-shadow:5px 5px 0 #1c1714; padding:10px; display:flex; flex-direction:column; gap:8px;">
+        {#if isAdmin}
+          <a
+            href="/admin"
+            title="Admin panel"
+            style="display:inline-flex; align-items:center; gap:6px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:8px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; cursor:pointer; box-shadow:3px 3px 0 rgba(28,23,20,.2); text-decoration:none;"
+          >✦ Admin panel</a>
+        {/if}
         <button
           onclick={logout}
           title="Sign out"
