@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import Shop from './Shop.svelte'
   import Admin from './Admin.svelte'
+  import Banned from './Banned.svelte'
   const target = new Date('2026-07-27T00:00:00').getTime()
   let d = $state('00')
   let h = $state('00')
@@ -28,7 +29,7 @@
   })
 
   // --- Auth ---
-  let user = $state<null | { name?: string; slack_id?: string }>(null)
+  let user = $state<null | { name?: string; slack_id?: string; role?: string; banned?: boolean }>(null)
   let authReady = $state(false)
   let isAdmin = $state(false)
 
@@ -205,7 +206,9 @@
 
 <svelte:window onclick={() => (menuOpen = false)} />
 
-{#if path === '/shop'}
+{#if authReady && user?.banned}
+  <Banned />
+{:else if path === '/shop'}
   <Shop />
 {:else if path.startsWith('/admin')}
   <Admin />

@@ -35,11 +35,15 @@
     ysws_eligible: boolean | null
     slack_id: string | null
     role: 'user' | 'reviewer' | 'admin'
+    banned: boolean
     created_at: string
     last_login: string
   }
 
   const ROLE_OPTIONS = ['user', 'reviewer', 'admin'] as const
+
+  // Base URL for opening a member's profile in the Slack workspace.
+  const SLACK_TEAM_URL = 'https://hackclub.slack.com/team/'
 
   let status = $state<'loading' | 'forbidden' | 'unauth' | 'ready' | 'error'>('loading')
   let users = $state<AdminUser[]>([])
@@ -146,6 +150,26 @@
       body: JSON.stringify({ role }),
     })
     if (!res.ok) u.role = prev
+  }
+
+  async function toggleBan(u: AdminUser) {
+    const next = !u.banned
+    // Check before banning: explicit confirmation, and don't allow banning admins.
+    if (next) {
+      if (u.role === 'admin') {
+        alert("You can't ban an admin.")
+        return
+      }
+      if (!confirm(`Ban ${u.name ?? u.email ?? 'this user'}? They'll be locked out and redirected away.`)) return
+    }
+    const prev = u.banned
+    u.banned = next // optimistic
+    const res = await fetch(`/api/admin/users/${encodeURIComponent(u.sub)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ banned: next }),
+    })
+    if (!res.ok) u.banned = prev // revert on failure
   }
 
   async function addItem() {
@@ -273,11 +297,12 @@
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">YSWS</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Role</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Last login</th>
+                <th style="padding:12px 14px; font-family:'Syne',sans-serif;"></th>
               </tr>
             </thead>
             <tbody>
               {#each shown as u (u.sub)}
-                <tr style="border-top:2px dashed rgba(28,23,20,.22);">
+                <tr style="border-top:2px dashed rgba(28,23,20,.22); opacity:{u.banned ? '.5' : '1'};">
                   <td style="padding:11px 14px;">
                     <div style="display:flex; align-items:center; gap:10px;">
                       {#if u.slack_id}
@@ -295,7 +320,13 @@
                     </div>
                   </td>
                   <td style="padding:11px 14px; color:#5b4f44;">{u.email ?? '—'}</td>
-                  <td style="padding:11px 14px; color:#5b4f44; font-family:monospace;">{u.slack_id ?? '—'}</td>
+                  <td style="padding:11px 14px; color:#5b4f44; font-family:monospace;">
+                    {#if u.slack_id}
+                      <a href={`${SLACK_TEAM_URL}${u.slack_id}`} target="_blank" rel="noopener" style="color:var(--orange); text-decoration:underline; text-decoration-style:wavy; text-underline-offset:3px;">{u.slack_id}</a>
+                    {:else}
+                      —
+                    {/if}
+                  </td>
                   <td style="padding:11px 14px; color:#5b4f44;">{u.verification_status ?? '—'}</td>
                   <td style="padding:11px 14px;">{u.ysws_eligible ? '✓' : '—'}</td>
                   <td style="padding:11px 14px;">
@@ -308,6 +339,14 @@
                     </select>
                   </td>
                   <td style="padding:11px 14px; color:#5b4f44; white-space:nowrap;">{fmt(u.last_login)}</td>
+                  <td style="padding:11px 14px;">
+                    {#if u.role !== 'admin'}
+                      <button
+                        onclick={() => toggleBan(u)}
+                        style="cursor:pointer; border:2px solid {u.banned ? '#1c1714' : '#c2451a'}; border-radius:6px; padding:4px 12px; font-weight:700; font-size:.75rem; background:{u.banned ? '#1c1714' : 'transparent'}; color:{u.banned ? '#fff' : '#c2451a'};"
+                      >{u.banned ? 'Unban' : 'Ban'}</button>
+                    {/if}
+                  </td>
                 </tr>
               {/each}
             </tbody>

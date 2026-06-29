@@ -14,11 +14,14 @@ export async function migrateAuth(){
             ysws_eligible BOOLEAN,
             slack_id TEXT,
             role TEXT NOT NULL DEFAULT 'user',
+            banned BOOLEAN NOT NULL DEFAULT false,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             last_login TIMESTAMPTZ NOT NULL DEFAULT now()
         );
     `);
     await pool.query(`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`)
+    await pool.query(`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false;`)
+
 }
 
 export async function upsertAuthUser(u: HcUser) {
@@ -95,4 +98,17 @@ export async function setAuthUserRole(sub: string, role: string): Promise<boolea
         [role, sub],
     );
     return (rowCount ?? 0) > 0;
+}
+
+export async function setAuthUserBanned(sub: string, banned: boolean): Promise<boolean> {
+    const { rowCount } = await pool.query(
+        `UPDATE auth_users SET banned = $1 WHERE sub = $2`,
+        [banned, sub],
+    );
+    return (rowCount ?? 0) > 0;
+}
+
+export async function getAuthUserMeta(sub: string): Promise<{ role: string; banned: boolean }> {
+    const { rows } = await pool.query(`SELECT role, banned FROM auth_users WHERE sub = $1`, [sub]);
+    return { role: rows[0]?.role ?? 'user', banned: rows[0]?.banned ?? false };
 }

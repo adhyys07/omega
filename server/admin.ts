@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { getSessionUser, isAdmin, ROLES, type Role } from "./auth.ts";
-import { pool, setAuthUserRole } from "./db.ts";
+import { pool, setAuthUserRole, setAuthUserBanned } from "./db.ts";
 
 export default async function adminRoutes(app: FastifyInstance) {
     // Gate every admin route: 401 if not signed in, 403 if signed in but not an admin.
@@ -82,13 +82,49 @@ export default async function adminRoutes(app: FastifyInstance) {
 
     app.patch('/api/admin/users/:sub', { preHandler: requireAdmin }, async (req, reply) => {
         const { sub } = req.params as { sub: string };
-        const { role } = (req.body ?? {}) as { role?: string };
-        if (!role || !ROLES.includes(role as Role)) {
-            return reply.code(400).send({ error: `role must be one of ${ROLES.join(', ')}` });
+        const b = (req.body ?? {}) as { role?: string; banned?: boolean };
+        const requester = getSessionUser(req);
+
+        if (b.role === undefined && b.banned === undefined) {
+            return reply.code(400).send({ error: 'Provide role and/or banned' });
         }
-        const ok = await setAuthUserRole(sub, role as Role);
-        if (!ok) { return reply.code(404).send({ error: 'User not found' }); }
-        return { sub, role };
+
+        // --- Safety checks before a ban can go through ---
+        if (b.banned === true) {
+            if (requester && requester.sub === sub) {
+                return reply.code(400).send({ error: "You can't ban yourself" });
+            }
+            const { rows } = await pool.query(
+                `SELECT email, slack_id, role FROM auth_users WHERE sub = $1`,
+                [sub],
+            );
+            if (rows.length === 0) return reply.code(404).send({ error: 'User not found' });
+            const target = rows[0];
+            const targetIsAdmin =
+                target.role === 'admin' ||
+                isAdmin({ sub, email: target.email ?? undefined, slack_id: target.slack_id ?? undefined });
+            if (targetIsAdmin) {
+                return reply.code(403).send({ error: "You can't ban an admin" });
+            }
+        }
+
+        if (b.role !== undefined) {
+            if (!ROLES.includes(b.role as Role)) {
+                return reply.code(400).send({ error: `role must be one of ${ROLES.join(', ')}` });
+            }
+            if (!(await setAuthUserRole(sub, b.role))) {
+                return reply.code(404).send({ error: 'User not found' });
+            }
+        }
+        if (b.banned !== undefined) {
+            if (typeof b.banned !== 'boolean') {
+                return reply.code(400).send({ error: 'banned must be a boolean' });
+            }
+            if (!(await setAuthUserBanned(sub, b.banned))) {
+                return reply.code(404).send({ error: 'User not found' });
+            }
+        }
+        return { sub, ...(b.role !== undefined && { role: b.role }), ...(b.banned !== undefined && { banned: b.banned }) };
     });
 
 
@@ -101,7 +137,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     // Everyone who has signed in via Hack Club auth.
     app.get('/api/admin/users', { preHandler: requireAdmin }, async () => {
         const { rows } = await pool.query(
-            `SELECT sub, email, name, verification_status, ysws_eligible, slack_id, role, created_at, last_login
+            `SELECT sub, email, name, verification_status, ysws_eligible, slack_id, role, banned, created_at, last_login
                FROM auth_users
               ORDER BY last_login DESC`,
         );

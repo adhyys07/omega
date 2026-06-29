@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import "@fastify/cookie"; // loads the type augmentation for reply.setCookie / req.cookies / req.unsignCookie
 import crypto from "node:crypto";
-import { upsertAuthUser, getAuthUserRole } from "./db.ts";
+import { upsertAuthUser, getAuthUserMeta } from "./db.ts";
 
 const ISSUER = 'https://auth.hackclub.com';
 const AUTHORIZE_URL = `${ISSUER}/oauth/authorize`;
@@ -120,8 +120,9 @@ export default async function authRoutes(app: FastifyInstance) {
         if (!user) {
             return reply.code(401).send({ error: 'Not authenticated' });
         }
-        const role = isAdmin(user) ? 'admin' : await getAuthUserRole(user.sub);
-        return { ...user, role };
+        const meta = await getAuthUserMeta(user.sub);
+        const role = isAdmin(user) ? 'admin' : meta.role;
+        return { ...user, role, banned: meta.banned };
     })
 
     app.post('/api/auth/logout', async (_req, reply) => {
@@ -148,10 +149,11 @@ export function requireRole(...allowed: Role[]) {
     return async (req: FastifyRequest, reply: FastifyReply) => {
         const user = getSessionUser(req);
         if (!user) return reply.code(401).send({ error: 'Not authenticated' });
-        if (isAdmin(user)) return; // env allow-list = full access
-        const role = await getAuthUserRole(user.sub);
-        if (role === 'admin') return; // DB admin = full access
-        if (!allowed.includes(role as Role)) {
+        if(isAdmin(user)) return; // admins can do anything
+        const meta = await getAuthUserMeta(user.sub);
+        if (meta.banned) return reply.code(403).send({ error: 'banned' });
+        if (meta.role  === 'admin') return; // admins can do anything
+        if (!allowed.includes(meta.role as Role)) {
             return reply.code(403).send({ error: 'Forbidden' });
         }
     };
