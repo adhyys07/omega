@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
-import { pool, migrate } from './db.ts'
+import { pool, migrate, migrateShop, seedShop } from './db.ts'
 import cookie from '@fastify/cookie'
 import authRoutes from './auth.ts'
 
@@ -47,12 +47,29 @@ app.post('/api/signup', async (req, reply) => {
   }
 })
 
-// Total signup count
+app.get('/api/shop/items', async () => {
+  const { rows } = await pool.query(
+    `SELECT id, slug, name, description, cost, category, icon, image_url, stock
+      FROM shop_items WHERE active = true ORDER BY sort_order, id`,
+  )
+  return rows
+})
+
 app.get('/api/signup', async () => {
   const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM users')
   return { count: rows[0].count }
 })
 
+app.get('/api/shop/items', async () => {
+  const { rows } = await pool.query(
+    `SELECT id, slug, name, description, cost, category, icon, stock
+      FROM shop_items WHERE active = true ORDER BY sort_order, id`,
+  )
+  return rows
+})  
+
+await migrateShop()
+await seedShop()
 await migrate()
 
 const port = Number(process.env.PORT ?? 3000)

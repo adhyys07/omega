@@ -13,8 +13,8 @@ export async function migrateAuth(){
             verification_status TEXT,
             ysws_eligible BOOLEAN,
             slack_id TEXT,
-            created_at TIMESTAMPZ NOT NULL DEFAULT now(),
-            last_login TIMESTAMPZ NOT NULL DEFAULT now()
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            last_login TIMESTAMPTZ NOT NULL DEFAULT now()
         );
     `);
 
@@ -32,6 +32,45 @@ export async function upsertAuthUser(u: HcUser) {
             slack_id = EXCLUDED.slack_id,
             last_login = now();
     `, [u.sub, u.email, u.name, u.verification_status, u.ysws_eligible, u.slack_id]);
+}
+
+export async function migrateShop(){
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS shop_items (
+            id SERIAL PRIMARY KEY,
+            slug TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            cost INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            icon TEXT,
+            image_url TEXT,
+            stock INTEGER,
+            active BOOLEAN NOT NULL DEFAULT true,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        `)
+    
+    await pool.query(`ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS image_url TEXT;`)
+}
+
+export async function seedShop(){
+    const rows: [string, string, string, number, string, string, string | null, number | null, number][] = [
+    ['android-phone',   'Android phone',      'A mid-range Android device to test on real hardware.', 60,  'hardware',    '🤖', 'https://placehold.co/600x400/3d7a40/fff?text=Android', 10, 1],
+    ['iphone-refurb',   'iPhone (refurb)',    'Refurbished iPhone so you can ship + test on iOS.',    110, 'hardware',    '', 'https://placehold.co/600x400/3d7a40/fff?text=Android' ,  5,  2],
+    ['play-license',    'Play Store license', '$25 Google Play developer account grant.',             12,  'dev_account', '▶', 'https://placehold.co/600x400/3d7a40/fff?text=Android' , null, 3],
+    ['apple-developer', 'Apple Developer',    '$100 Apple Developer Program membership.',             45,  'dev_account',  '','https://placehold.co/600x400/3d7a40/fff?text=Android',null, 4],
+    ['mech-keyboard',   'Mech keyboard',      'A clacky 65% keyboard to make the grind comfy.',       40,  'gear',        '⌨', 'https://placehold.co/600x400/3d7a40/fff?text=Android' , 8,  5],
+    ['dev-credits',     'Dev tool credits',   'Cloud / API / design-tool credits for builders.',      20,  'tools',       '✦', 'https://placehold.co/600x400/3d7a40/fff?text=Android',  null, 6],
+  ]
+  for (const [slug, name, description, cost, category, icon, image_url, stock, sort] of rows) {
+    await pool.query(
+      `INSERT INTO shop_items (slug, name, description, cost, category, icon, image_url, stock, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (slug) DO UPDATE SET image_url = EXCLUDED.image_url`,
+      [slug, name, description, cost, category, icon, image_url, stock, sort],
+    )
+  }
 }
 
 export async function migrate() {

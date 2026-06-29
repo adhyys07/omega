@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-    import { stopPropagation } from 'svelte/legacy';
+  import Shop from './Shop.svelte'
   const target = new Date('2026-07-27T00:00:00').getTime()
   let d = $state('00')
   let h = $state('00')
@@ -70,6 +70,14 @@
       loading = false
     }
   }
+
+  let path = $state(location.pathname)
+  onMount(() => {
+    const onPop = () => (path = location.pathname)
+    addEventListener('popstate', onPop)
+    return () => removeEventListener('popstate', onPop)
+  })
+  
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -188,6 +196,9 @@
 
 <svelte:window onclick={() => (menuOpen = false)} />
 
+{#if path === '/shop'}
+  <Shop />
+{:else}
 <div class="omega">
   <!-- paper grain overlay -->
   <div class="grain"></div>
@@ -506,7 +517,7 @@
   <div style="background:#e3d4b8; padding:48px 24px; text-align:center;">
     <div style="max-width:720px; margin:0 auto;">
       <div style="font-family:'Syne',sans-serif; font-size:1.1rem; font-weight:800; margin-bottom:10px;">A Hack Club project</div>
-      <p style="font-size:.84rem; line-height:1.7; max-width:480px; margin:0 auto 22px; color:#5b4f44;">Hack Club is a 501(c)(3) nonprofit supporting 20k+ technical high schoolers. You Ship, We Ship — build something real, get something real back.</p>
+      <p style="font-size:.84rem; line-height:1.7; max-width:480px; margin:0 auto 22px; color:#5b4f44;">Hack Club is a 501(c)(3) nonprofit supporting 60k+ technical high schoolers. You Ship, We Ship — build something real, get something real back.</p>
       <div style="display:flex; gap:18px; justify-content:center; flex-wrap:wrap; margin-bottom:18px;">
         {#each footerLinks as link}
           <a href={link.href} target="_blank" rel="noopener" class="footer-link" style="color:#5b4f44; font-size:.8rem; font-weight:600; text-decoration:none;">{link.label}</a>
@@ -516,6 +527,7 @@
     </div>
   </div>
 </div>
+{/if}
 
 <style>
   .omega {
