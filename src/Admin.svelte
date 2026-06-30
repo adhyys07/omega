@@ -17,11 +17,13 @@
 
   const TOOLS = [
     { id: 'users',    label: '◉ Users',     href: '/admin' },
+    { id: 'orders',   label: '☑ Fulfillment',     href: '/admin/orders' },
     { id: 'items',    label: '▣ Shop items', href: '/admin/items' },
     { id: 'signups',  label: '✉ Signups',    href: '/admin/signups' },
   ] as const
 
   const active = $derived(
+    path.startsWith('/admin/orders') ? 'orders' :
     path.startsWith('/admin/items') ? 'items' :
     path.startsWith('/admin/signups') ? 'signups' :
     'users'
@@ -38,6 +40,86 @@
     banned: boolean
     created_at: string
     last_login: string
+  }
+
+  type Order = {
+    id: number
+    item_name: string
+    cost: number
+    quantity: number
+    status: 'pending' | 'fulfilled' | 'cancelled' | 'refunded'
+    shipping: string | null
+    note: string | null
+    tracking: string | null
+    created_at: string
+    fulfilled_at: string | null
+    user_name: string | null
+    user_email: string | null
+    user_slack_id: string | null
+  }
+
+  let orders = $state<Order[]>([])
+  let ordersStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  let orderFilter = $state<'all' | 'pending' | 'fulfilled' | 'cancelled' | 'refunded'>('pending')
+  const ORDER_FILTERS = ['pending', 'fulfilled', 'refunded', 'cancelled', 'all'] as const
+
+  async function loadOrders() {
+    ordersStatus = 'loading'
+    try {
+      const qs = orderFilter === 'all' ? '' : `?status=${orderFilter}`
+      const res = await fetch(`/api/admin/orders${qs}`)
+      if (!res.ok) throw new Error()
+      orders = await res.json()
+      ordersStatus = 'ready'
+    } catch {
+      ordersStatus = 'error'
+    }
+  }
+
+  function setOrderFilter(f: typeof orderFilter) {
+    orderFilter = f
+    loadOrders()
+  }
+
+  async function fulfillOrder(o: Order){
+    if (!confirm(`Mark order #${o.id} (${o.item_name}) as fulfilled?`)) return
+    const tracking = prompt('Tracking / fulfillment reference (optional):') ?? ''
+    const res = await fetch(`/api/admin/orders/${o.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'fulfilled', tracking: tracking.trim() || undefined }),
+    })
+    if (res.ok) {
+      const u = await res.json()
+      o.status = u.status; o.tracking = u.tracking; o.fulfilled_at = u.fulfilled_at
+      if (orderFilter !== 'all' && orderFilter !== 'fulfilled') orders = orders.filter((x) => x.id !== o.id)
+    }
+  }
+
+  async function cancelOrder(o: Order){
+    if (!confirm(`Cancel order #${o.id}? (Refund Ω tokens manually if needed.)`)) return
+    const res = await fetch(`/api/admin/orders/${o.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'cancelled' }),
+    })
+    if (res.ok) {
+      o.status = 'cancelled'
+      if (orderFilter !== 'all' && orderFilter !== 'cancelled') orders = orders.filter((x) => x.id !== o.id)
+    }
+  }
+
+  async function refundOrder(o: Order){
+    if (!confirm(`Refund order #${o.id} (${o.item_name})? Credit the Ω tokens back manually if needed.`)) return
+    const res = await fetch(`/api/admin/orders/${o.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'refunded' }),
+    })
+    if (res.ok) {
+      o.status = 'refunded'
+      if (orderFilter !== 'all' && orderFilter !== 'refunded') orders = orders.filter((x) => x.id !== o.id)
+    }
   }
 
   const ROLE_OPTIONS = ['user', 'reviewer', 'admin'] as const
@@ -222,6 +304,7 @@
   $effect(()=> {
     if (active === 'signups' && signupsStatus === 'idle') loadSignups()
     if (active === 'items' && itemsStatus === 'idle') loadItems()
+    if (active === 'orders' && ordersStatus === 'idle') loadOrders()
   })
 </script>
 
@@ -353,6 +436,78 @@
           </table>
         </div>
       {/if}
+    {/if}
+
+  {:else if active === 'orders'}
+    <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>
+    <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,7vw,3.4rem); letter-spacing:-.02em; margin:0; text-shadow:3px 3px 0 rgba(255,69,0,.16);">Fulfillment</h1>
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin:22px 0 24px;">
+      {#each ORDER_FILTERS as f}
+        <button
+          onclick={() => setOrderFilter(f)}
+          style="padding:7px 16px; border:2px solid #1c1714; border-radius:100px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; text-transform:capitalize; cursor:pointer; box-shadow:2px 2px 0 rgba(28,23,20,.18); background:{orderFilter === f ? 'var(--orange)' : '#fbf4e6'}; color:{orderFilter === f ? '#fff' : '#1c1714'};"
+        >{f}</button>
+      {/each}
+    </div>
+
+    {#if ordersStatus === 'loading'}
+      <p style="color:#5b4f44;">Loading orders…</p>
+    {:else if ordersStatus === 'error'}
+      <p style="color:#c2451a; font-weight:700;">Couldn't load orders. Is the server running?</p>
+    {:else if orders.length === 0}
+      <p style="color:#5b4f44;">No {orderFilter === 'all' ? '' : orderFilter} orders.</p>
+    {:else}
+      <div style="overflow-x:auto; border:2.5px solid #1c1714; border-radius:16px 11px 15px 12px/12px 15px 11px 16px; box-shadow:5px 5px 0 rgba(28,23,20,.13); background:#fbf4e6;">
+        <table style="width:100%; border-collapse:collapse; font-size:.85rem; min-width:880px;">
+          <thead>
+            <tr style="background:rgba(255,69,0,.1); text-align:left;">
+              <th style="padding:12px 14px; font-family:'Syne',sans-serif;">#</th>
+              <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Item</th>
+              <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Buyer</th>
+              <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Ship to</th>
+              <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Cost</th>
+              <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Placed</th>
+              <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Status</th>
+              <th style="padding:12px 14px; font-family:'Syne',sans-serif;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each orders as o (o.id)}
+              <tr style="border-top:2px dashed rgba(28,23,20,.22); opacity:{o.status === 'cancelled' ? '.55' : '1'};">
+                <td style="padding:11px 14px; color:#5b4f44; font-family:monospace;">{o.id}</td>
+                <td style="padding:11px 14px;">
+                  <div style="font-weight:700;">{o.item_name}</div>
+                  {#if o.quantity > 1}<div style="font-size:.72rem; color:#5b4f44;">×{o.quantity}</div>{/if}
+                </td>
+                <td style="padding:11px 14px; color:#5b4f44;">
+                  <div style="font-weight:700; color:#1c1714;">{o.user_name ?? '—'}</div>
+                  <div style="font-size:.74rem;">{o.user_email ?? '—'}</div>
+                </td>
+                <td style="padding:11px 14px; color:#5b4f44; max-width:220px; white-space:pre-wrap;">{o.shipping ?? '—'}</td>
+                <td style="padding:11px 14px; white-space:nowrap;">⏣ {o.cost}</td>
+                <td style="padding:11px 14px; color:#5b4f44; white-space:nowrap;">{fmt(o.created_at)}</td>
+                <td style="padding:11px 14px;">
+                  <span style="display:inline-block; padding:3px 10px; border:1.5px solid #1c1714; border-radius:6px; font-size:.72rem; font-weight:700; text-transform:capitalize;
+                    background:{o.status === 'fulfilled' ? 'rgba(74,150,80,.2)' : o.status === 'cancelled' ? '#e3d4b8' : o.status === 'refunded' ? 'rgba(47,109,176,.15)' : 'rgba(255,179,71,.25)'};
+                    color:{o.status === 'fulfilled' ? '#3d7a40' : o.status === 'cancelled' ? '#5b4f44' : o.status === 'refunded' ? '#2f6db0' : '#b07410'};">{o.status}</span>
+                  {#if o.tracking}<div style="font-size:.7rem; color:#5b4f44; margin-top:4px; font-family:monospace;">{o.tracking}</div>{/if}
+                </td>
+                <td style="padding:11px 14px; white-space:nowrap;">
+                  {#if o.status === 'pending'}
+                    <button onclick={() => fulfillOrder(o)} style="cursor:pointer; border:2px solid #1c1714; border-radius:6px; padding:4px 12px; font-weight:700; font-size:.75rem; background:var(--orange); color:#fff; margin-right:6px;">Fulfill</button>
+                    <button onclick={() => cancelOrder(o)} style="cursor:pointer; border:2px solid #c2451a; border-radius:6px; padding:4px 12px; font-weight:700; font-size:.75rem; background:transparent; color:#c2451a;">Cancel</button>
+                  {:else if o.status === 'fulfilled'}
+                    <button onclick={() => refundOrder(o)} style="cursor:pointer; border:2px solid #2f6db0; border-radius:6px; padding:4px 12px; font-weight:700; font-size:.75rem; background:transparent; color:#2f6db0;">Refund</button>
+                  {:else}
+                    <span style="color:#9c8a6e; font-size:.74rem;">{o.fulfilled_at ? fmt(o.fulfilled_at) : '—'}</span>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {/if}
 
   {:else if active === 'items'}

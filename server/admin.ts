@@ -30,6 +30,54 @@ export default async function adminRoutes(app: FastifyInstance) {
         );
         return rows;
     });
+    
+    const ORDER_STATUSES = ['pending', 'fulfilled', 'cancelled', 'refunded'] as const;
+
+    app.get('/api/admin/orders', { preHandler: requireAdmin }, async (req) => {
+        const { status } = req.query as { status?: string };
+        const params: unknown[] = [];
+        let where = '';
+        if (status && ORDER_STATUSES.includes(status as typeof ORDER_STATUSES[number])) {
+            params.push(status);
+            where = 'WHERE o.status = $1';
+        }
+        const { rows } = await pool.query(
+            `SELECT o.id, o.item_name, o.cost, o.quantity, o.status, o.shipping, o.note, o.tracking, o.created_at, o.fulfilled_at, u.name AS user_name, u.email AS user_email, u.slack_id AS user_slack_id
+                FROM orders o
+                JOIN auth_users u ON u.sub = o.user_sub
+                ${where}
+                ORDER BY (o.status = 'pending') DESC, o.created_at DESC`,
+            params,
+        );
+        return rows;
+    });
+
+    app.patch('/api/admin/orders/:id', { preHandler: requireAdmin }, async (req, reply) => {
+        const { id } = req.params as { id: string };
+        const b = (req.body ?? {}) as { status?: string; tracking?: string; note?: string };
+        const admin = getSessionUser(req);
+
+        if (b.status === undefined && b.tracking === undefined && b.note === undefined) {
+            return reply.code(400).send({ error: 'Provide status and/or tracking and/or note' });
+        }
+        if (b.status !== undefined && !ORDER_STATUSES.includes(b.status as typeof ORDER_STATUSES[number])) {
+            return reply.code(400).send({ error: `status must be one of ${ORDER_STATUSES.join(', ')}` });
+        }
+        
+        const { rows } = await pool.query(
+            `UPDATE orders SET
+                status = COALESCE($1, status),
+                tracking = COALESCE($2, tracking),
+                note = COALESCE($3, note),
+                fulfilled_at = CASE WHEN $1 = 'fulfilled' THEN now() ELSE fulfilled_at END,
+                fulfilled_by = CASE WHEN $1 = 'fulfilled' THEN $4 ELSE fulfilled_by END
+             WHERE id = $5
+             RETURNING id, status, tracking, note, fulfilled_at`,
+            [b.status ?? null, b.tracking ?? null, b.note ?? null, admin?.sub ?? null, Number(id)],
+        );
+        if (rows.length === 0) { return reply.code(404).send({ error: 'Order not found' }); }
+        return rows[0];
+    });
 
     app.post('/api/admin/items', { preHandler: requireAdmin }, async (req, reply) => {
         const b = (req.body ?? {}) as Record<string, unknown>;

@@ -59,6 +59,27 @@ export async function migrateShop(){
     await pool.query(`ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS image_url TEXT;`)
 }
 
+export async function migrateOrders() {
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS orders (
+            id SERIAL PRIMARY KEY,
+            user_sub TEXT NOT NULL REFERENCES auth_users(sub),
+            item_id INTEGER REFERENCES shop_items(id),
+            item_name TEXT NOT NULL,
+            cost INTEGER NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'pending',
+            shipping TEXT,
+            note TEXT,
+            tracking TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            fulfilled_at TIMESTAMPTZ,
+            fulfilled_by TEXT
+        );
+    `);
+     await pool.query(`CREATE INDEX IF NOT EXISTS orders_status_idx ON orders (status);`);
+}
+
 export async function seedShop(){
     const rows: [string, string, string, number, string, string, string | null, number | null, number][] = [
     ['android-phone',   'Android phone',      'A mid-range Android device to test on real hardware.', 60,  'hardware',    '🤖', 'https://placehold.co/600x400/3d7a40/fff?text=Android', 10, 1],

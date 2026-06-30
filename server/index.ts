@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
-import { pool, migrate, migrateAuth, migrateShop, seedShop } from './db.ts'
+import { pool, migrate, migrateAuth, migrateShop, seedShop, migrateOrders } from './db.ts'
 import cookie from '@fastify/cookie'
 import authRoutes from './auth.ts'
 import adminRoutes from './admin.ts'
@@ -64,6 +64,7 @@ app.get('/api/signup', async () => {
 
 await migrateAuth()
 await migrateShop()
+await migrateOrders()
 await seedShop()
 await migrate()
 
