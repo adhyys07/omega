@@ -8,7 +8,9 @@ const AUTHORIZE_URL = `${ISSUER}/oauth/authorize`;
 const TOKEN_URL = `${ISSUER}/oauth/token`;
 const USERINFO_URL = `${ISSUER}/oauth/userinfo`;
 
-const SCOPES = 'openid profile email verification_status slack_id';
+// Minimal at signup — collect PII (phone/birthdate/address) later on the prizes form.
+// `openid` is required for the /oauth/userinfo endpoint to accept the access token.
+const SCOPES = 'openid email name slack_id';
 
 const STATE_COOKIE = 'hc_oauth_state';
 const SESSION_COOKIE = 'hc_session';
@@ -52,7 +54,7 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.redirect(url.toString());
     })
 
-    app.get('/api/auth/callback', async (req, reply) => {
+    app.get('/oauth/callback', async (req, reply) => {
         const { code, state } = req.query as { code?: string; state?: string };
 
         const signed = req.cookies[STATE_COOKIE];
