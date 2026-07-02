@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
-import { pool, migrate, migrateAuth, migrateShop, seedShop, migrateOrders } from './db.ts'
+import { createSignup, countSignups, listActiveShopItems } from './db.ts'
 import cookie from '@fastify/cookie'
 import authRoutes from './auth.ts'
 import adminRoutes from './admin.ts'
@@ -34,15 +34,10 @@ app.post('/api/signup', async (req, reply) => {
   }
 
   try {
-    const { rows } = await pool.query(
-      `INSERT INTO users (email) VALUES ($1)
-       ON CONFLICT (email) DO NOTHING
-       RETURNING id, email, created_at`,
-      [value],
-    )
+    const { created, row } = await createSignup(value)
     // Already signed up → still a success from the user's point of view
-    if (rows.length === 0) return reply.code(200).send({ alreadyExists: true })
-    return reply.code(201).send(rows[0])
+    if (!created) return reply.code(200).send({ alreadyExists: true })
+    return reply.code(201).send(row)
   } catch (err) {
     req.log.error(err)
     return reply.code(500).send({ error: 'Something went wrong' })
@@ -50,23 +45,12 @@ app.post('/api/signup', async (req, reply) => {
 })
 
 app.get('/api/shop/items', async () => {
-  const { rows } = await pool.query(
-    `SELECT id, slug, name, description, cost, category, icon, image_url, stock
-      FROM shop_items WHERE active = true ORDER BY sort_order, id`,
-  )
-  return rows
+  return listActiveShopItems()
 })
 
 app.get('/api/signup', async () => {
-  const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM users')
-  return { count: rows[0].count }
+  return { count: await countSignups() }
 })
-
-await migrateAuth()
-await migrateShop()
-await migrateOrders()
-await seedShop()
-await migrate()
 
 const port = Number(process.env.PORT ?? 3000)
 await app.listen({ port, host: '0.0.0.0' })

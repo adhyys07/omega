@@ -1,6 +1,19 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { getSessionUser, isAdmin, ROLES, type Role } from "./auth.ts";
-import { pool, setAuthUserRole, setAuthUserBanned, adjustUserTokens } from "./db.ts";
+import {
+    listSignups,
+    listAllShopItems,
+    createShopItem,
+    setShopItemActive,
+    deleteShopItem,
+    listOrders,
+    updateOrder,
+    listAuthUsers,
+    getAuthUserBySub,
+    setAuthUserRole,
+    setAuthUserBanned,
+    adjustUserTokens,
+} from "./db.ts";
 
 export default async function adminRoutes(app: FastifyInstance) {
     // Gate every admin route: 401 if not signed in, 403 if signed in but not an admin.
@@ -17,39 +30,21 @@ export default async function adminRoutes(app: FastifyInstance) {
     });
 
     app.get('/api/admin/signups', { preHandler: requireAdmin }, async () => {
-        const { rows } = await pool.query(
-            `SELECT id, email, created_at FROM users ORDER BY created_at DESC`,
-        );
-        return rows;
+        return listSignups();
     });
 
     app.get('/api/admin/items', { preHandler: requireAdmin }, async () => {
-        const { rows } = await pool.query(
-            `SELECT id, slug, name, description, cost, category, icon, image_url, stock, active, sort_order
-               FROM shop_items ORDER BY sort_order, id`,
-        );
-        return rows;
+        return listAllShopItems();
     });
     
     const ORDER_STATUSES = ['pending', 'fulfilled', 'cancelled', 'refunded'] as const;
 
     app.get('/api/admin/orders', { preHandler: requireAdmin }, async (req) => {
         const { status } = req.query as { status?: string };
-        const params: unknown[] = [];
-        let where = '';
-        if (status && ORDER_STATUSES.includes(status as typeof ORDER_STATUSES[number])) {
-            params.push(status);
-            where = 'WHERE o.status = $1';
-        }
-        const { rows } = await pool.query(
-            `SELECT o.id, o.item_name, o.cost, o.quantity, o.status, o.shipping, o.note, o.tracking, o.created_at, o.fulfilled_at, u.name AS user_name, u.email AS user_email, u.slack_id AS user_slack_id
-                FROM orders o
-                JOIN auth_users u ON u.sub = o.user_sub
-                ${where}
-                ORDER BY (o.status = 'pending') DESC, o.created_at DESC`,
-            params,
-        );
-        return rows;
+        const filter = status && ORDER_STATUSES.includes(status as typeof ORDER_STATUSES[number])
+            ? status
+            : undefined;
+        return listOrders(filter);
     });
 
     app.patch('/api/admin/orders/:id', { preHandler: requireAdmin }, async (req, reply) => {
@@ -63,20 +58,10 @@ export default async function adminRoutes(app: FastifyInstance) {
         if (b.status !== undefined && !ORDER_STATUSES.includes(b.status as typeof ORDER_STATUSES[number])) {
             return reply.code(400).send({ error: `status must be one of ${ORDER_STATUSES.join(', ')}` });
         }
-        
-        const { rows } = await pool.query(
-            `UPDATE orders SET
-                status = COALESCE($1, status),
-                tracking = COALESCE($2, tracking),
-                note = COALESCE($3, note),
-                fulfilled_at = CASE WHEN $1 = 'fulfilled' THEN now() ELSE fulfilled_at END,
-                fulfilled_by = CASE WHEN $1 = 'fulfilled' THEN $4 ELSE fulfilled_by END
-             WHERE id = $5
-             RETURNING id, status, tracking, note, fulfilled_at`,
-            [b.status ?? null, b.tracking ?? null, b.note ?? null, admin?.sub ?? null, Number(id)],
-        );
-        if (rows.length === 0) { return reply.code(404).send({ error: 'Order not found' }); }
-        return rows[0];
+
+        const updated = await updateOrder(id, b, admin?.sub ?? null);
+        if (!updated) { return reply.code(404).send({ error: 'Order not found' }); }
+        return updated;
     });
 
     app.post('/api/admin/users/:sub/tokens', { preHandler: requireAdmin }, async (req, reply) => {
@@ -112,17 +97,16 @@ export default async function adminRoutes(app: FastifyInstance) {
         }
 
         try {
-            const { rows } = await pool.query(
-                `INSERT INTO shop_items (slug, name, description, cost, category, icon, image_url, stock, sort_order)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-                 RETURNING id, slug, name, description, cost, category, icon, image_url, stock, active, sort_order`,
-                [slug, name, description, cost, category, icon || null, image_url || null,
-                    Number.isFinite(stock) ? stock : null,
-                    Number.isFinite(sort_order) ? sort_order : 0],
-            );
-            return reply.code(201).send(rows[0]);
+            const item = await createShopItem({
+                slug, name, description, cost, category,
+                icon: icon || null,
+                image_url: image_url || null,
+                stock: Number.isFinite(stock) ? stock : null,
+                sort_order: Number.isFinite(sort_order) ? sort_order : 0,
+            });
+            return reply.code(201).send(item);
         }   catch (err) {
-            if ((err as { code?: string }).code === '23505') {
+            if ((err as { code?: string }).code === 'DUPLICATE_SLUG') {
                 return reply.code(409).send({ error: 'An item with that slug already exists' });
             }
             req.log.error(err, 'failed to create shop item');
@@ -136,12 +120,9 @@ export default async function adminRoutes(app: FastifyInstance) {
         if (typeof b.active !== 'boolean') {
             return reply.code(400).send({ error: 'active must be a boolean' });
         }
-        const { rows } = await pool.query(
-            `UPDATE shop_items SET active = $1 WHERE id = $2 RETURNING id, active`,
-            [b.active, Number(id)],
-        );
-        if (rows.length === 0) { return reply.code(404).send({ error: 'Item not found' }); }
-        return rows[0];
+        const updated = await setShopItemActive(id, b.active);
+        if (!updated) { return reply.code(404).send({ error: 'Item not found' }); }
+        return updated;
     });
 
     app.patch('/api/admin/users/:sub', { preHandler: requireAdmin }, async (req, reply) => {
@@ -158,12 +139,8 @@ export default async function adminRoutes(app: FastifyInstance) {
             if (requester && requester.sub === sub) {
                 return reply.code(400).send({ error: "You can't ban yourself" });
             }
-            const { rows } = await pool.query(
-                `SELECT email, slack_id, role FROM auth_users WHERE sub = $1`,
-                [sub],
-            );
-            if (rows.length === 0) return reply.code(404).send({ error: 'User not found' });
-            const target = rows[0];
+            const target = await getAuthUserBySub(sub);
+            if (!target) return reply.code(404).send({ error: 'User not found' });
             const targetIsAdmin =
                 target.role === 'admin' ||
                 isAdmin({ sub, email: target.email ?? undefined, slack_id: target.slack_id ?? undefined });
@@ -194,18 +171,13 @@ export default async function adminRoutes(app: FastifyInstance) {
 
     app.delete('/api/admin/items/:id', { preHandler: requireAdmin }, async (req, reply) => {
         const { id } = req.params as { id: string };
-        const { rowCount } = await pool.query(`DELETE FROM shop_items WHERE id = $1`, [Number(id)]);
-        if (rowCount === 0) { return reply.code(404).send({ error: 'Item not found' }); }
+        const ok = await deleteShopItem(id);
+        if (!ok) { return reply.code(404).send({ error: 'Item not found' }); }
         return { ok: true };
     });
     // Everyone who has signed in via Hack Club auth.
     app.get('/api/admin/users', { preHandler: requireAdmin }, async () => {
-        const { rows } = await pool.query(
-            `SELECT sub, email, name, verification_status, ysws_eligible, slack_id, role, banned, tokens, created_at, last_login
-               FROM auth_users
-              ORDER BY last_login DESC`,
-        );
-        return rows;
+        return listAuthUsers();
     });
 
 }
