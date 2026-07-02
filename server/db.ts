@@ -15,6 +15,7 @@ const TABLE = {
     shopItems: "shop_items",
     orders: "orders",
     signups: "signups",
+    tokenAdjustments: "token_adjustments",
 } as const;
 
 type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
@@ -257,8 +258,29 @@ export async function upsertAuthUser(u: HcUser): Promise<void> {
             ...fields,
             role: "user",
             banned: false,
+            tokens: 0,
         });
     }
+}
+
+export async function adjustUserTokens(sub: string, delta: number, reason: string | null, adminSub: string | null): Promise<{ok : true; tokens: number} | {ok: false; error: string}> {
+    // Airtable has no transactions or row locks (the Postgres version used
+    // SELECT ... FOR UPDATE), so this is read-then-write: two concurrent
+    // adjustments to the same user could race. Acceptable at admin-panel scale.
+    const user = await findAuthUser(sub);
+    if (!user) return { ok: false, error: 'User not found' };
+    const next = Number(user.tokens ?? 0) + delta;
+    if (next < 0) return { ok: false, error: 'Insufficient tokens' };
+    await updateRecord(TABLE.authUsers, user.id, { tokens: next });
+    // Audit-log the adjustment; `user` links to the auth_users record.
+    await createRecord(TABLE.tokenAdjustments, {
+        user_sub: sub,
+        user: [user.id],
+        delta,
+        reason: reason || null,
+        admin_sub: adminSub ?? null,
+    });
+    return { ok: true, tokens: next };
 }
 
 export async function getAuthUserMeta(sub: string): Promise<{ role: string; banned: boolean }> {
@@ -303,6 +325,7 @@ export async function listAuthUsers(): Promise<Record<string, unknown>[]> {
         slack_id: r.slack_id ?? null,
         role: (r.role as string) ?? "user",
         banned: bool(r.banned),
+        tokens: Number(r.tokens ?? 0),
         created_at: r.created ?? null,
         last_login: r.last_login ?? null,
     }));

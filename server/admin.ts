@@ -12,6 +12,7 @@ import {
     getAuthUserBySub,
     setAuthUserRole,
     setAuthUserBanned,
+    adjustUserTokens,
 } from "./db.ts";
 
 export default async function adminRoutes(app: FastifyInstance) {
@@ -62,6 +63,22 @@ export default async function adminRoutes(app: FastifyInstance) {
         if (!updated) { return reply.code(404).send({ error: 'Order not found' }); }
         return updated;
     });
+
+    app.post('/api/admin/users/:sub/tokens', { preHandler: requireAdmin }, async (req, reply) => {
+        const { sub } = req.params as { sub: string };
+        const { delta, reason } = (req.body ?? {}) as { delta?: number; reason?: string };
+        if (typeof delta !== 'number' || !Number.isInteger(delta) || delta === 0) {
+            return reply.code(400).send({ error: 'delta must be a non-zero integer' });
+        }
+        const admin = getSessionUser(req);
+        const result = await adjustUserTokens(sub, delta, reason ?? null, admin?.sub ?? null);
+        if (!result.ok) {
+            return reply.code(400).send({ error: result.error });
+        }
+        return { sub, tokens: result.tokens };
+    });
+    
+
 
     app.post('/api/admin/items', { preHandler: requireAdmin }, async (req, reply) => {
         const b = (req.body ?? {}) as Record<string, unknown>;
@@ -162,4 +179,5 @@ export default async function adminRoutes(app: FastifyInstance) {
     app.get('/api/admin/users', { preHandler: requireAdmin }, async () => {
         return listAuthUsers();
     });
+
 }
