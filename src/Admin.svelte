@@ -38,6 +38,7 @@
     slack_id: string | null
     role: 'user' | 'reviewer' | 'admin'
     banned: boolean
+    tokens: number
     created_at: string
     last_login: string
   }
@@ -234,6 +235,28 @@
     if (!res.ok) u.role = prev
   }
 
+  async function adjustTokens(u: AdminUser) {
+    const raw = prompt(
+      `Adjust tokens for ${u.name ?? u.email ?? 'user'}.\nCurrent balance: ⏣ ${u.tokens}\n\nEnter amount — positive to grant, negative to deduct:`,
+    )
+    if (raw === null) return
+    const delta = Number(raw.trim())
+    if (!Number.isInteger(delta) || delta === 0) { alert('Enter a non-zero whole number (e.g. 50 or -20).'); return }
+    const reason = prompt('Reason (optional — saved to the audit log):') ?? ''
+    const res = await fetch(`/api/admin/users/${encodeURIComponent(u.sub)}/tokens`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delta, reason: reason.trim() || undefined }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      u.tokens = data.tokens
+    } else {
+      const err = await res.json().catch(() => ({}))
+      alert(err.error ?? 'Failed to adjust tokens.')
+    }
+  }
+
   async function toggleBan(u: AdminUser) {
     const next = !u.banned
     // Check before banning: explicit confirmation, and don't allow banning admins.
@@ -379,6 +402,7 @@
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Verified</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">YSWS</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Role</th>
+                <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Tokens</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Last login</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;"></th>
               </tr>
@@ -420,6 +444,14 @@
                     >
                       {#each ROLE_OPTIONS as r}<option value={r}>{r}</option>{/each}
                     </select>
+                  </td>
+                  <td style="padding:11px 14px; white-space:nowrap;">
+                    <span style="font-weight:700; margin-right:8px;">⏣ {u.tokens}</span>
+                    <button
+                      onclick={() => adjustTokens(u)}
+                      title="Grant or deduct tokens"
+                      style="cursor:pointer; border:2px solid #1c1714; border-radius:6px; padding:3px 9px; font-weight:700; font-size:.75rem; background:rgba(255,69,0,.14); color:#1c1714;"
+                    >± Adjust</button>
                   </td>
                   <td style="padding:11px 14px; color:#5b4f44; white-space:nowrap;">{fmt(u.last_login)}</td>
                   <td style="padding:11px 14px;">

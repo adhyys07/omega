@@ -15,13 +15,25 @@ export async function migrateAuth(){
             slack_id TEXT,
             role TEXT NOT NULL DEFAULT 'user',
             banned BOOLEAN NOT NULL DEFAULT false,
+            tokens INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             last_login TIMESTAMPTZ NOT NULL DEFAULT now()
         );
     `);
     await pool.query(`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`)
     await pool.query(`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false;`)
-
+    await pool.query(`ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS tokens INTEGER NOT NULL DEFAULT 0;`)
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS token_adjustments (
+            id SERIAL PRIMARY KEY,
+            user_sub TEXT NOT NULL REFERENCES auth_users(sub),
+            delta INTEGER NOT NULL,
+            reason TEXT,
+            admin_sub TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+    `);
+    await pool.query(`ALTER TABLE token_adjustments ALTER COLUMN reason DROP NOT NULL;`)
 }
 
 export async function upsertAuthUser(u: HcUser) {
@@ -127,6 +139,39 @@ export async function setAuthUserBanned(sub: string, banned: boolean): Promise<b
         [banned, sub],
     );
     return (rowCount ?? 0) > 0;
+}
+
+export async function adjustUserTokens(sub: string, delta: number, reason: string | null, adminSub: string | null): Promise<{ok : true; tokens: number} | {ok: false; error: string}> {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(
+            `SELECT tokens FROM auth_users WHERE sub = $1 FOR UPDATE`,
+            [sub],
+        );
+        if (rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { ok: false, error: 'User not found' };
+        }
+        const next = (rows[0].tokens as number) + delta;
+        if (next < 0) {
+            await client.query('ROLLBACK');
+            return { ok: false, error: 'Insufficient tokens' };
+        }
+        await client.query(
+            `UPDATE auth_users SET tokens = $1 WHERE sub = $2`,
+            [next, sub]);
+        await client.query(
+            `INSERT INTO token_adjustments (user_sub, delta, reason, admin_sub) VALUES ($1, $2, $3, $4)`,
+            [sub, delta, reason, adminSub]);
+        await client.query('COMMIT');
+        return { ok: true, tokens: next };
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
 }
 
 export async function getAuthUserMeta(sub: string): Promise<{ role: string; banned: boolean }> {
