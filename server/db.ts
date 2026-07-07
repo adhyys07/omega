@@ -242,12 +242,22 @@ async function findAuthUser(sub: string): Promise<Row | null> {
 
 export async function upsertAuthUser(u: HcUser): Promise<void> {
     const existing = await findAuthUser(u.sub);
+
+    const a =  u.address;
+    const formattedAddress =
+        a?.formatted ??
+        ([a?.street_address, a?.locality, a?.region, a?.postal_code, a?.country]
+            .filter(Boolean)
+            .join(', ') || null);
+
     const fields: Record<string, unknown> = {
         email: u.email ?? null,
         name: u.name ?? null,
         verification_status: u.verification_status ?? null,
         ysws_eligible: u.ysws_eligible ?? false,
         slack_id: u.slack_id ?? null,
+        phone_number: u.phone_number ?? null,
+        address: formattedAddress,
         last_login: now(),
     };
     if (existing) {
@@ -326,10 +336,20 @@ export async function listAuthUsers(): Promise<Record<string, unknown>[]> {
         role: (r.role as string) ?? "user",
         banned: bool(r.banned),
         tokens: Number(r.tokens ?? 0),
+        phone_number: r.phone_number ?? null,
+        address: r.address ?? null,
         created_at: r.created ?? null,
         last_login: r.last_login ?? null,
     }));
 }
+
+// --- Phone Number & Address -----------------------------------------------------------------
+export async function getAuthUserContact(sub:string,): Promise<{ phone_number: string | null; address: string | null } | null> {
+    const row = await findAuthUser(sub);
+    if (!row) return null;
+    return { phone_number: (row.phone_number as string) ?? null, address: (row.address as string) ?? null };
+}
+
 
 // --- Orders -----------------------------------------------------------------
 

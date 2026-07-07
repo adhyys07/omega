@@ -29,6 +29,16 @@ export type HcUser = {
     verification_status?: string;
     ysws_eligible?: boolean;
     slack_id?: string;
+    phone_number?: string;
+    phone_number_verified?: boolean;
+    address?: {
+        formatted?: string;
+        street_address?: string;
+        locality?: string;
+        region?: string;
+        postal_code?: string;
+        country?: string;
+    };
 }
 
 export default async function authRoutes(app: FastifyInstance) {

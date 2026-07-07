@@ -39,6 +39,8 @@
     role: 'user' | 'reviewer' | 'admin'
     banned: boolean
     tokens: number
+    phone_number: string | null
+    address: string | null
     created_at: string
     last_login: string
   }
@@ -398,6 +400,7 @@
               <tr style="background:rgba(255,69,0,.1); text-align:left;">
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">User</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Email</th>
+                <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Contact</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Slack ID</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Verified</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">YSWS</th>
@@ -427,6 +430,14 @@
                     </div>
                   </td>
                   <td style="padding:11px 14px; color:#5b4f44;">{u.email ?? '—'}</td>
+                  <td style="padding:11px 14px; color:#5b4f44; max-width:220px;">
+                    {#if u.phone_number || u.address}
+                      {#if u.phone_number}<div style="white-space:nowrap;">{u.phone_number}</div>{/if}
+                      {#if u.address}<div style="font-size:.78rem; white-space:pre-wrap;">{u.address}</div>{/if}
+                    {:else}
+                      —
+                    {/if}
+                  </td>
                   <td style="padding:11px 14px; color:#5b4f44; font-family:monospace;">
                     {#if u.slack_id}
                       <a href={`${SLACK_TEAM_URL}${u.slack_id}`} target="_blank" rel="noopener" style="color:var(--orange); text-decoration:underline; text-decoration-style:wavy; text-underline-offset:3px;">{u.slack_id}</a>
