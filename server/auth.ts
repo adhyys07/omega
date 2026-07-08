@@ -8,9 +8,13 @@ const AUTHORIZE_URL = `${ISSUER}/oauth/authorize`;
 const TOKEN_URL = `${ISSUER}/oauth/token`;
 const USERINFO_URL = `${ISSUER}/oauth/userinfo`;
 
-// Minimal at signup — collect PII (phone/birthdate/address) later on the prizes form.
 // `openid` is required for the /oauth/userinfo endpoint to accept the access token.
-const SCOPES = 'openid email name slack_id';
+// The provider strictly validates scopes: one un-grantable scope fails the whole
+// authorize call. Per the HC OAuth guide, community apps may request
+// `openid profile email name slack_id verification_status` (this app also has phone +
+// address enabled). `ysws_eligible` is NOT a requestable scope — it's a claim returned
+// with verification_status and only populated once the account is YSWS-verified.
+const SCOPES = 'openid profile email slack_id phone address verification_status birthdate';
 
 const STATE_COOKIE = 'hc_oauth_state';
 const SESSION_COOKIE = 'hc_session';
@@ -31,6 +35,7 @@ export type HcUser = {
     slack_id?: string;
     phone_number?: string;
     phone_number_verified?: boolean;
+    birthdate?: string;
     address?: {
         formatted?: string;
         street_address?: string;
@@ -64,7 +69,7 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.redirect(url.toString());
     })
 
-    app.get('/oauth/callback', async (req, reply) => {
+    app.get('/api/auth/callback', async (req, reply) => {
         const { code, state } = req.query as { code?: string; state?: string };
 
         const signed = req.cookies[STATE_COOKIE];

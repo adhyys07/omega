@@ -258,6 +258,7 @@ export async function upsertAuthUser(u: HcUser): Promise<void> {
         slack_id: u.slack_id ?? null,
         phone_number: u.phone_number ?? null,
         address: formattedAddress,
+        birthdate: u.birthdate ?? null,
         last_login: now(),
     };
     if (existing) {
@@ -266,6 +267,7 @@ export async function upsertAuthUser(u: HcUser): Promise<void> {
         await createRecord(TABLE.authUsers, {
             sub: u.sub,
             ...fields,
+            created_at: now(),
             role: "user",
             banned: false,
             tokens: 0,
