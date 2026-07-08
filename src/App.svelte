@@ -30,9 +30,17 @@
   })
 
   // --- Auth ---
-  let user = $state<null | { name?: string; slack_id?: string; role?: string; banned?: boolean }>(null)
+  let user = $state<null | { name?: string; slack_id?: string; role?: string; banned?: boolean; birthdate?: string }>(null)
   let authReady = $state(false)
   let isAdmin = $state(false)
+
+  // user.birthdate is the OIDC "YYYY-MM-DD" claim; true when month+day match today.
+  const isBirthdayToday = $derived.by(() => {
+    if (!user?.birthdate) return false
+    const [, mm, dd] = user.birthdate.split('-')
+    const t = new Date()
+    return Number(mm) === t.getMonth() + 1 && Number(dd) === t.getDate()
+  })
 
   onMount(async () => {
     try {
@@ -88,7 +96,7 @@
     addEventListener('popstate', onPop)
     return () => removeEventListener('popstate', onPop)
   })
-  
+
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -266,6 +274,15 @@
         >Sign out</button>
       </div>
     {/if}
+    </div>
+  {/if}
+
+  {#if isBirthdayToday}
+    <div style="margin:96px auto 0; max-width:640px; padding:14px 20px; background:var(--orange); color:#fff; border:3px solid #1c1714; box-shadow:5px 5px 0 #1c1714; border-radius:16px 11px 15px 12px/12px 15px 11px 16px; font-family:'Syne',sans-serif; font-weight:800; font-size:1.1rem; text-align:center; position:relative; z-index:60;">
+      🎉 Happy birthday, {user?.name?.split(' ')[0] ?? 'friend'}! 🎂
+      <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:.85rem; margin-top:4px; opacity:.95;">
+        Enjoy some cake on us — the whole Omega crew is celebrating you today.
+      </div>
     </div>
   {/if}
   <!-- Hero -->

@@ -275,6 +275,25 @@ export async function upsertAuthUser(u: HcUser): Promise<void> {
     }
 }
 
+/** Everyone whose birthday (month + day) is today. Empty birthdates are excluded. */
+export async function listBirthdaysToday(): Promise<Row[]> {
+    const t = new Date();
+    const m = t.getMonth() + 1;
+    const d = t.getDate();
+    const rows = await listAll(TABLE.authUsers, {
+        filterByFormula: `AND({birthdate}, MONTH({birthdate})=${m}, DAY({birthdate})=${d})`,
+    });
+    return rows.map((r) => ({
+        id: r.id,
+        sub: r.sub,
+        name: r.name ?? null,
+        email: r.email ?? null,
+        slack_id: r.slack_id ?? null,
+        birthdate: r.birthdate ?? null,
+    }));
+}
+
+
 export async function adjustUserTokens(sub: string, delta: number, reason: string | null, adminSub: string | null): Promise<{ok : true; tokens: number} | {ok: false; error: string}> {
     // Airtable has no transactions or row locks (the Postgres version used
     // SELECT ... FOR UPDATE), so this is read-then-write: two concurrent
