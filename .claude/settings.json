@@ -25,7 +25,10 @@
       "WebFetch(domain:identity.hackclub.com)",
       "WebSearch",
       "WebFetch(domain:hackatime.hackclub.com)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(timeout 12 npm run server)",
+      "Bash(netstat -ano)",
+      "Bash(curl -s -m 4 http://localhost:3000/api/health)"
     ]
   }
 }

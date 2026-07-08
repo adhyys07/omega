@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import "@fastify/cookie"; // loads the type augmentation for reply.setCookie / req.cookies / req.unsignCookie
 import crypto from "node:crypto";
-import { upsertAuthUser, getAuthUserMeta } from "./db.ts";
+import { upsertAuthUser, getAuthUserMeta, getHackatimeToken } from "./db.ts";
 
 const ISSUER = 'https://auth.hackclub.com';
 const AUTHORIZE_URL = `${ISSUER}/oauth/authorize`;
@@ -124,6 +124,13 @@ export default async function authRoutes(app: FastifyInstance) {
                 signed: true,
                 maxAge: 7 * 24 * 60 * 60, // 7 days (maxAge is in SECONDS)
             })
+
+            // Immediately chain into Hackatime linking after a fresh Hack Club login,
+            // unless this user has already connected their Hackatime account.
+            const hackatimeLinked = await getHackatimeToken(user.sub);
+            if (!hackatimeLinked) {
+                return reply.redirect('/api/hackatime/login');
+            }
 
             return reply.redirect(process.env.FRONTEND_URL || '/');
         } catch (err) {
