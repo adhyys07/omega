@@ -5,6 +5,7 @@ import { createSignup, countSignups, listActiveShopItems } from './db.ts'
 import cookie from '@fastify/cookie'
 import authRoutes from './auth.ts'
 import adminRoutes from './admin.ts'
+import HackatimeRoutes from './hackatime.ts'
 
 const app = Fastify({ logger: true })
 
@@ -16,6 +17,7 @@ await app.register(cookie, {
   secret: process.env.SESSION_SECRET!})
 
 await app.register(authRoutes)
+await app.register(HackatimeRoutes)
 await app.register(adminRoutes)
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

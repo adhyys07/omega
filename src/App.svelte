@@ -42,6 +42,35 @@
     return Number(mm) === t.getMonth() + 1 && Number(dd) === t.getDate()
   })
 
+  // --- Hackatime ---
+  type HtProject = { name?: string; text?: string; total_seconds?: number }
+  let htProjects = $state<HtProject[]>([])
+  let htLoaded = $state(false)
+  let htLoading = $state(false)
+  let htLinked = $state(true)   // flips false on a 404 (token not stored yet)
+  let htError = $state(false)
+
+  async function loadHackatimeProjects() {
+    htLoading = true
+    htError = false
+    try {
+      const r = await fetch('/api/hackatime/projects')
+      if (r.status === 404) { htLinked = false; htLoaded = true; return }
+      if (!r.ok) throw new Error()
+      const data = await r.json()
+      // Response shape varies; accept a bare array or a { data|projects } wrapper.
+      htProjects = Array.isArray(data) ? data : (data.data ?? data.projects ?? [])
+      htLinked = true
+      htLoaded = true
+    } catch {
+      htError = true
+    } finally {
+      htLoading = false
+    }
+  }
+
+  const fmtHours = (s?: number) => (s ? `${Math.round((s / 3600) * 10) / 10}h` : '')
+
   onMount(async () => {
     try {
       const res = await fetch('/api/auth/me')
@@ -267,6 +296,37 @@
             style="display:inline-flex; align-items:center; gap:6px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:8px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; cursor:pointer; box-shadow:3px 3px 0 rgba(28,23,20,.2); text-decoration:none;"
           >✦ Admin panel</a>
         {/if}
+        <a
+          href="/api/hackatime/login"
+          title="Connect your Hackatime account"
+          style="display:inline-flex; align-items:center; gap:6px; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:8px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; cursor:pointer; box-shadow:3px 3px 0 rgba(28,23,20,.2); text-decoration:none;"
+        >⏱ Connect Hackatime</a>
+        <button
+          onclick={(e) => { e.stopPropagation(); loadHackatimeProjects() }}
+          title="Load my Hackatime projects"
+          style="display:inline-flex; align-items:center; gap:6px; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:8px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; cursor:pointer; box-shadow:3px 3px 0 rgba(28,23,20,.2);"
+        >{htLoading ? 'Loading…' : 'My projects'}</button>
+
+        {#if htLoaded}
+          {#if !htLinked}
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#5b4f44; padding:2px 4px;">Not linked yet — hit “Connect Hackatime” first.</div>
+          {:else if htProjects.length}
+            <div style="max-height:180px; overflow:auto; display:flex; flex-direction:column; gap:4px; border-top:2px dashed #1c1714; padding-top:8px;">
+              {#each htProjects as p}
+                <div style="display:flex; justify-content:space-between; gap:10px; font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#1c1714;">
+                  <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{p.name ?? 'Untitled'}</span>
+                  <span style="color:#5b4f44; flex:none;">{p.text ?? fmtHours(p.total_seconds)}</span>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#5b4f44; padding:2px 4px;">No projects found.</div>
+          {/if}
+        {/if}
+        {#if htError}
+          <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#c2451a; padding:2px 4px;">Couldn’t load projects — try again.</div>
+        {/if}
+
         <button
           onclick={logout}
           title="Sign out"

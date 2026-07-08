@@ -23,7 +23,9 @@
       "mcp__claude_ai_Airtable__mutate",
       "mcp__claude_ai_Airtable__query",
       "WebFetch(domain:identity.hackclub.com)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:hackatime.hackclub.com)",
+      "Bash(npm run *)"
     ]
   }
 }

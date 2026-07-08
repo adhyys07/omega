@@ -364,6 +364,17 @@ export async function listAuthUsers(): Promise<Record<string, unknown>[]> {
     }));
 }
 
+export async function setHackatimeToken(sub: string, token: string | null): Promise<void> {
+    const row = await findAuthUser(sub);
+    if(!row) return;
+    await updateRecord(TABLE.authUsers, row.id, { hackatime_token: token });
+}
+
+export async function getHackatimeToken(sub: string): Promise<string | null> {
+    const row = await findAuthUser(sub);
+    return (row?.hackatime_token as string) ?? null;
+}
+
 // --- Phone Number & Address -----------------------------------------------------------------
 export async function getAuthUserContact(sub:string,): Promise<{ phone_number: string | null; address: string | null } | null> {
     const row = await findAuthUser(sub);
