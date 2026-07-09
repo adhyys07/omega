@@ -5,7 +5,7 @@
   // the signed-in user's profile server-side, and address/birthday are gathered
   // later at the prizes step. No personal info is entered on this form.
   let f = $state({
-     title: '', code_url: '', playable_url: '', description: '',
+     title: '', code_url: '', playable_url: '', description: '', screenshot_url: '',
      hackatime_project: '', hackatime_hours: null as number | null,
 
    })
@@ -132,6 +132,7 @@
       <input bind:value={f.code_url} type="url" placeholder="Code URL (repository)" required style={inputStyle} />
       <input bind:value={f.playable_url} type="url" placeholder="Playable / demo URL (optional)" style={inputStyle} />
       <textarea bind:value={f.description} placeholder="Describe what you built" rows="6" required style={inputStyle}></textarea>
+      <input bind:value={f.screenshot_url} type="url" placeholder="Screenshot URL (public link)" style={inputStyle} />
 
       {#if error}
         <div style="font-family:'Space Grotesk',sans-serif; font-size:.85rem; color:#b3261e; font-weight:700;">{error}</div>

@@ -1,12 +1,19 @@
 import type { FastifyInstance } from "fastify";
 import { getSessionUser } from "./auth.ts";
-import { createSubmission, approveSubmission, rejectSubmission, type SubmissionInput } from "./db.ts";
+import { createSubmission, approveSubmission, rejectSubmission,listSubmissionsBySub, type SubmissionInput } from "./db.ts";
 import { notifySlackOfNewSubmission, verifySlackSignature } from "./slack.ts";
+
 
 export default async function submissionRoutes(app: FastifyInstance) {
     app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (req, body, done) => {
         (req as any).rawBody = body;
         done(null, new URLSearchParams(body as string));
+    });
+
+    app.get('/api/submissions/mine', async (req, reply) => {
+        const user = getSessionUser(req);
+        if (!user) return reply.status(401).send({ error: 'Not authenticated' });
+        return listSubmissionsBySub(user.sub);
     });
 
     app.post('/api/submissions', async (req, reply) => {

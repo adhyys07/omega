@@ -359,6 +359,30 @@ export async function setAuthUserBanned(sub: string, banned: boolean): Promise<b
     return true;
 }
 
+/** Reconcile a user's ban state with their Hackatime trust level, run on every
+ *  login/authorize:
+ *    - trust "red"            → ban (follow the banned workflow)
+ *    - recovered from "red"   → lift the ban (give normal access again)
+ *    - anything else          → leave `banned` untouched, so manual admin bans survive
+ *  The last-seen trust level is stored to tell a trust-ban apart from an admin ban. */
+export async function syncBanFromTrust(sub: string, trustLevel: string | null): Promise<void> {
+    // Null means we couldn't determine trust (fetch failed / no profile scope) —
+    // never change ban state on an unknown, or a transient error would auto-unban.
+    if (trustLevel === null) return;
+    const row = await findAuthUser(sub);
+    if (!row) return;
+    const prevTrust = (row.hackatime_trust as string) ?? null;
+
+    const fields: Record<string, unknown> = { hackatime_trust: trustLevel };
+    if (trustLevel === "red") {
+        fields.banned = true;
+    } else if (prevTrust === "red") {
+        // Trust recovered since last time — clear the trust-based ban.
+        fields.banned = false;
+    }
+    await updateRecord(TABLE.authUsers, row.id, fields);
+}
+
 export async function listAuthUsers(): Promise<Record<string, unknown>[]> {
     const rows = await listAll(TABLE.authUsers, { sort: [{ field: "last_login", direction: "desc" }] });
     return rows.map((r) => ({
@@ -370,6 +394,7 @@ export async function listAuthUsers(): Promise<Record<string, unknown>[]> {
         slack_id: r.slack_id ?? null,
         role: (r.role as string) ?? "user",
         banned: bool(r.banned),
+        hackatime_trust: r.hackatime_trust ?? null,
         tokens: Number(r.tokens ?? 0),
         phone_number: r.phone_number ?? null,
         address: r.address ?? null,
@@ -403,6 +428,7 @@ export type SubmissionInput = {
     code_url: string;
     playable_url?: string;
     description: string;
+    screenshot_url?: string;
     hackatime_project?: string;
     hackatime_hours?: number | null;
 };
@@ -420,6 +446,7 @@ export async function createSubmission(input: SubmissionInput): Promise<Row> {
         code_url: input.code_url,
         playable_url: input.playable_url ?? "",
         description: input.description,
+        screenshot_url: input.screenshot_url ?? "",
         hackatime_project: input.hackatime_project ?? null,
 
         first_name: first_name ?? "",
@@ -444,6 +471,23 @@ export async function listSubmissions(status?: string): Promise<Row[]> {
         status ? { filterByFormula: `{status}='${esc(status)}'` } : {},
     );
 }
+
+export async function listSubmissionsBySub(sub: string): Promise<Row[]> {
+    const rows = await listAll(TABLE.projectSubmissions, {
+        filterByFormula: `{user_sub}='${esc(sub)}'`,
+    });
+    // newest first (created_at is a real field we set on insert)
+    rows.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+    return rows.map((r) => ({
+        id: r.id,
+        title: r.title ?? null,
+        status: r.status ?? "pending",
+        code_url: r.code_url ?? null,
+        hackatime_project: r.hackatime_project ?? null,
+        created_at: r.created_at ?? null,
+    }));
+}
+
 
 export async function rejectSubmission(id: string, reviewer?: string): Promise<void> {
     await updateRecord(TABLE.projectSubmissions, id, {

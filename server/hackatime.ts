@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import "@fastify/cookie"; // loads the type augmentation for reply.setCookie / req.cookies / req.unsignCookie
 import crypto from "node:crypto";
 import { getSessionUser } from "./auth.ts";
-import { setHackatimeToken, getHackatimeToken } from "./db.ts";
+import { setHackatimeToken, getHackatimeToken, syncBanFromTrust } from "./db.ts";
+import { fetchHackatimeTrustLevel } from "./hackatime-api.ts";
 
 const BASE =  process.env.HACKATIME_BASE_URL ?? 'https://hackatime.hackclub.com';
 const AUTHORIZE_URL = `${BASE}/oauth/authorize`;
@@ -82,6 +83,10 @@ export default async function hackatimeRoutes(app: FastifyInstance) {
             };
 
             await setHackatimeToken(user.sub, tok.access_token);
+
+            // Gate access on Hackatime trust: red → banned, recovered → unbanned.
+            const trust = await fetchHackatimeTrustLevel(tok.access_token);
+            await syncBanFromTrust(user.sub, trust);
 
             reply.clearCookie(STATE_COOKIE, { path: '/' });
             return reply.redirect(process.env.FRONTEND_URL || "/");

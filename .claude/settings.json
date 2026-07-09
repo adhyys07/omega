@@ -28,7 +28,9 @@
       "Bash(npm run *)",
       "Bash(timeout 12 npm run server)",
       "Bash(netstat -ano)",
-      "Bash(curl -s -m 4 http://localhost:3000/api/health)"
+      "Bash(curl -s -m 4 http://localhost:3000/api/health)",
+      "Read(//c/Users/adhdh/.claude/sessions/**)",
+      "PowerShell(& \"C:\\\\Users\\\\adhdh\\\\.vscode\\\\extensions\\\\anthropic.claude-code-2.1.205-win32-x64\\\\resources\\\\native-binary\\\\claude.exe\" --version)"
     ]
   }
 }

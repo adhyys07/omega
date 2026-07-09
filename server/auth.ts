@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import "@fastify/cookie"; // loads the type augmentation for reply.setCookie / req.cookies / req.unsignCookie
 import crypto from "node:crypto";
-import { upsertAuthUser, getAuthUserMeta, getHackatimeToken } from "./db.ts";
+import { upsertAuthUser, getAuthUserMeta, getHackatimeToken, syncBanFromTrust } from "./db.ts";
+import { fetchHackatimeTrustLevel } from "./hackatime-api.ts";
 
 const ISSUER = 'https://auth.hackclub.com';
 const AUTHORIZE_URL = `${ISSUER}/oauth/authorize`;
@@ -127,10 +128,15 @@ export default async function authRoutes(app: FastifyInstance) {
 
             // Immediately chain into Hackatime linking after a fresh Hack Club login,
             // unless this user has already connected their Hackatime account.
-            const hackatimeLinked = await getHackatimeToken(user.sub);
-            if (!hackatimeLinked) {
+            const hackatimeToken = await getHackatimeToken(user.sub);
+            if (!hackatimeToken) {
                 return reply.redirect('/api/hackatime/login');
             }
+
+            // Re-evaluate Hackatime trust on every login so a recovered account
+            // regains access and a newly-flagged (red) account gets banned.
+            const trust = await fetchHackatimeTrustLevel(hackatimeToken);
+            await syncBanFromTrust(user.sub, trust);
 
             return reply.redirect(process.env.FRONTEND_URL || '/');
         } catch (err) {

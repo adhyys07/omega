@@ -38,6 +38,7 @@
     slack_id: string | null
     role: 'user' | 'reviewer' | 'admin'
     banned: boolean
+    hackatime_trust: string | null
     tokens: number
     phone_number: string | null
     address: string | null
@@ -404,6 +405,7 @@
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Slack ID</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Verified</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">YSWS</th>
+                <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Trust</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Role</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Tokens</th>
                 <th style="padding:12px 14px; font-family:'Syne',sans-serif;">Last login</th>
@@ -447,6 +449,16 @@
                   </td>
                   <td style="padding:11px 14px; color:#5b4f44;">{u.verification_status ?? '—'}</td>
                   <td style="padding:11px 14px;">{u.ysws_eligible ? '✓' : '—'}</td>
+                  <td style="padding:11px 14px;">
+                    {#if u.hackatime_trust}
+                      {@const c = { red: '#c2451a', yellow: '#b07410', green: '#3d7a40', blue: '#2f6db0' }[u.hackatime_trust] ?? '#5b4f44'}
+                      <span style="display:inline-flex; align-items:center; gap:5px; font-size:.75rem; font-weight:700; color:{c};">
+                        <span style="width:9px; height:9px; border-radius:50%; background:{c}; border:1px solid #1c1714;"></span>{u.hackatime_trust}
+                      </span>
+                    {:else}
+                      —
+                    {/if}
+                  </td>
                   <td style="padding:11px 14px;">
                     <select
                       value={u.role}
