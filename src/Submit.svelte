@@ -6,9 +6,22 @@
   // later at the prizes step. No personal info is entered on this form.
   let f = $state({
      title: '', code_url: '', playable_url: '', description: '', screenshot_url: '',
+     demo_video_url: '',
      hackatime_project: '', hackatime_hours: null as number | null,
 
    })
+
+  type UploadField = 'screenshot_url' | 'demo_video_url'
+
+  const MAX_BYTES: Record<UploadField, number> = {
+    screenshot_url: 8 * 1024 * 1024,
+    demo_video_url: 64 * 1024 * 1024,
+  }
+
+  const ACCEPT: Record<UploadField, string> = {
+    screenshot_url: 'image/png,image/jpeg,image/gif,image/webp',
+    demo_video_url: 'video/mp4,video/webm,video/quicktime',
+  }
 
   let projects = $state<HtProject[]>([])
   let projectsLoaded = $state(false)
@@ -17,6 +30,8 @@
   let authReady = $state(false)
   let submitting = $state(false)
   let done = $state(false)
+  let uploading = $state<UploadField | null>(null)
+  let uploadError = $state('')
   let error = $state('')
 
   type HtProject = { name?: string; total_seconds?: number }
@@ -48,6 +63,37 @@
       error = err instanceof Error ? err.message : 'Something went wrong'
     } finally {
       submitting = false
+    }
+  }
+
+  async function uploadMedia(e: Event, field: UploadField){
+    const input = e.currentTarget as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file) return
+
+    uploadError = ''
+    const limit = MAX_BYTES[field]
+    if (file.size > limit) {
+      uploadError = `File is too large (max ${Math.round(limit / 1024 / 1024)}MB)`
+      input.value = ''
+      return
+    }
+
+    uploading = field
+    try {
+      const r = await fetch(`/api/uploads/media?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    })
+    const data = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(data.error ?? 'Upload failed')
+    f[field] = data.url
+    } catch (err) {
+      uploadError = err instanceof Error ? err.message : 'Something went wrong'
+    } finally {
+      uploading = null
+      input.value = ''
     }
   }
 
@@ -133,6 +179,20 @@
       <input bind:value={f.playable_url} type="url" placeholder="Playable / demo URL (optional)" style={inputStyle} />
       <textarea bind:value={f.description} placeholder="Describe what you built" rows="6" required style={inputStyle}></textarea>
       <input bind:value={f.screenshot_url} type="url" placeholder="Screenshot URL (public link)" style={inputStyle} />
+      <label style="font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#5b4f44; cursor:{uploading ? 'wait' : 'pointer'};">
+        {uploading === 'screenshot_url' ? 'Uploading screenshot…' : '⬆ or upload a screenshot'}
+        <input type="file" accept={ACCEPT.screenshot_url} disabled={!!uploading} onchange={(e) => uploadMedia(e, 'screenshot_url')} style="display:none;" />
+      </label>
+
+      <input bind:value={f.demo_video_url} type="url" placeholder="Demo video URL (optional)" style={inputStyle} />
+      <label style="font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#5b4f44; cursor:{uploading ? 'wait' : 'pointer'};">
+        {uploading === 'demo_video_url' ? 'Uploading video…' : '⬆ or upload a demo video (MP4, WebM, MOV — max 64MB)'}
+        <input type="file" accept={ACCEPT.demo_video_url} disabled={!!uploading} onchange={(e) => uploadMedia(e, 'demo_video_url')} style="display:none;" />
+      </label>
+
+      {#if uploadError}
+        <div style="font-family:'Space Grotesk',sans-serif; font-size:.85rem; color:#b3261e; font-weight:700;">{uploadError}</div>
+      {/if}
 
       {#if error}
         <div style="font-family:'Space Grotesk',sans-serif; font-size:.85rem; color:#b3261e; font-weight:700;">{error}</div>

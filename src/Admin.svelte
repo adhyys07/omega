@@ -227,15 +227,30 @@
     }
   }
 
-  async function changeRole(u: AdminUser, role: string){
+  async function changeRole(u: AdminUser, role: string, select: HTMLSelectElement){
     const prev = u.role
+    if (role === prev) return
+
+    const who = u.name ?? u.email ?? 'this user'
+    const warning = role === 'admin' ? '\n\nAdmins can manage users, tokens, and bans.' : ''
+    // The select is bound one-way, so u.role never changes on cancel and Svelte
+    // won't re-render it — reset the element to keep it in step with the data.
+    if (!confirm(`Change ${who}'s role from "${prev}" to "${role}"?${warning}`)) {
+      select.value = prev
+      return
+    }
+
     u.role = role as AdminUser['role']
     const res = await fetch(`/api/admin/users/${encodeURIComponent(u.sub)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role }),
     })
-    if (!res.ok) u.role = prev
+    if (!res.ok) {
+      u.role = prev
+      select.value = prev
+      alert(`Couldn't change ${who}'s role.`)
+    }
   }
 
   async function adjustTokens(u: AdminUser) {
@@ -368,7 +383,7 @@
     </nav>
   </header>
 
-  <div style="max-width:1080px; margin:0 auto; padding:48px 24px 80px;">
+  <div style="max-width:1500px; margin:0 auto; padding:48px 24px 80px;">
   {#if active === 'users'}
     <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>
     <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,7vw,3.4rem); letter-spacing:-.02em; margin:0; text-shadow:3px 3px 0 rgba(255,69,0,.16);">Users</h1>
@@ -462,7 +477,7 @@
                   <td style="padding:11px 14px;">
                     <select
                       value={u.role}
-                      onchange={(e) => changeRole(u, e.currentTarget.value)}
+                      onchange={(e) => changeRole(u, e.currentTarget.value, e.currentTarget)}
                       style="border:2px solid #1c1714; border-radius:6px; padding:4px 8px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.75rem; background:{u.role === 'reviewer' ? 'rgba(47,109,176,.14)' : u.role === 'admin' ? 'rgba(255,69,0,.16)' : '#fbf4e6'}; color:#1c1714; cursor:pointer;"
                     >
                       {#each ROLE_OPTIONS as r}<option value={r}>{r}</option>{/each}

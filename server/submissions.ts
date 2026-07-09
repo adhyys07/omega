@@ -26,6 +26,10 @@ export default async function submissionRoutes(app: FastifyInstance) {
             if (!b[k] || String(b[k]).trim() === "") return reply.code(400).send({ error: `Missing field: ${k}` });
         }
 
+        if (b.demo_video_url && !/^https:\/\//i.test(b.demo_video_url.trim())) {
+            return reply.code(400).send({ error: "Demo video URL must be an https link" });
+        }
+
         try {
             const row = await createSubmission({ ...(b as SubmissionInput), user_sub: user.sub });
             notifySlackOfNewSubmission(user, row).catch((err: unknown) => req.log.error(err, "slack notify failed"));

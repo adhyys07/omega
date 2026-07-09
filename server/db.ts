@@ -429,6 +429,7 @@ export type SubmissionInput = {
     playable_url?: string;
     description: string;
     screenshot_url?: string;
+    demo_video_url?: string;
     hackatime_project?: string;
     hackatime_hours?: number | null;
 };
@@ -447,6 +448,7 @@ export async function createSubmission(input: SubmissionInput): Promise<Row> {
         playable_url: input.playable_url ?? "",
         description: input.description,
         screenshot_url: input.screenshot_url ?? "",
+        demo_video_url: input.demo_video_url ?? "",
         hackatime_project: input.hackatime_project ?? null,
 
         first_name: first_name ?? "",
