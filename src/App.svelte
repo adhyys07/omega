@@ -4,6 +4,8 @@
   import Admin from './Admin.svelte'
   import Banned from './Banned.svelte'
   import Docs from './Docs.svelte'
+  import Submit from './Submit.svelte'
+
   const target = new Date('2026-07-27T00:00:00').getTime()
   let d = $state('00')
   let h = $state('00')
@@ -252,6 +254,8 @@
   <Admin />
 {:else if path === '/docs'}
   <Docs />
+{:else if path === '/submit'}
+  <Submit />
 {:else}
 <div class="omega">
   <!-- paper grain overlay -->

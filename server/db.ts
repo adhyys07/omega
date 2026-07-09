@@ -16,10 +16,12 @@ const TABLE = {
     orders: "orders",
     signups: "signups",
     tokenAdjustments: "token_adjustments",
+    projectSubmissions: "project_submissions",
+    yswsSubmissions: "YSWS Project Submission",
 } as const;
 
 type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
-type Row = { id: string } & Record<string, unknown>;
+export type Row = { id: string } & Record<string, unknown>;
 
 /** A record shaped for consumers: the Airtable field bag flattened, with the
  *  record id exposed as `id`. */
@@ -85,6 +87,18 @@ async function listAll(
     } while (offset);
     return out;
 }
+
+async function getRecordById(table: string, id: string): Promise<Row | null> {
+    try {
+        const data = await at(`${encodeURIComponent(table)}/${id}`);
+        return flatten(data as AirtableRecord);
+    } catch (err) {
+        if ((err as { status?: number }).status === 404) return null;
+        throw err;
+    }
+}
+
+
 
 async function findOne(table: string, formula: string): Promise<Row | null> {
     const params = new URLSearchParams({ filterByFormula: formula, maxRecords: "1" });
@@ -382,8 +396,79 @@ export async function getAuthUserContact(sub:string,): Promise<{ phone_number: s
     return { phone_number: (row.phone_number as string) ?? null, address: (row.address as string) ?? null };
 }
 
+// -- Submissions -----------------------------------------------------------------
+export type SubmissionInput = {
+    user_sub: string;
+    title: string;
+    code_url: string;
+    playable_url?: string;
+    description: string;
+};
 
-// --- Orders -----------------------------------------------------------------
+export async function createSubmission(input: SubmissionInput): Promise<Row> {
+    // Identity (name/email) is pulled from the signed-in user's stored profile —
+    // the form never re-asks for personal info.
+    const u = await findAuthUser(input.user_sub);
+    const [first_name, ...rest] = String(u?.name ?? "").split(" ");
+    const fields: Record<string, unknown> = {
+        title: input.title,
+        user_sub: input.user_sub,
+        code_url: input.code_url,
+        playable_url: input.playable_url ?? "",
+        description: input.description,
+        first_name: first_name ?? "",
+        last_name: rest.join(" "),
+        email: (u?.email as string) ?? "",
+        status: "pending",
+        created_at: now(),
+    };
+    return createRecord(TABLE.projectSubmissions, fields);
+}
+
+export async function getSubmissionById(id: string): Promise<Row | null> {
+    return getRecordById(TABLE.projectSubmissions, id);
+}
+
+export async function listSubmissions(status?: string): Promise<Row[]> {
+    return listAll(
+        TABLE.projectSubmissions,
+        status ? { filterByFormula: `{status}='${esc(status)}'` } : {},
+    );
+}
+
+export async function rejectSubmission(id: string, reviewer?: string): Promise<void> {
+    await updateRecord(TABLE.projectSubmissions, id, {
+        status: "rejected",
+        reviewed_by: reviewer ?? null,
+        reviewed_at: now(),
+    });
+}
+
+export async function approveSubmission(id: string, reviewer?: string): Promise<Row | null> {
+    const s = await getSubmissionById(id);
+    if (!s) return null;
+    if (s.status === "approved") return s;
+
+    // Only the essentials are promoted; Address/Birthday/hours are collected later.
+    const y: Record<string, unknown> = {
+        "First Name": s.first_name ?? "",
+        "Last Name": s.last_name ?? "",
+        "Email": s.email ?? "",
+        "Code URL": s.code_url ?? "",
+        "Playable URL": s.playable_url ?? "",
+        "Description": s.description ?? "",
+    };
+
+    const ysws = await createRecord(TABLE.yswsSubmissions, y);
+
+    await updateRecord(TABLE.projectSubmissions, id, {
+        status: "approved",
+        reviewed_by: reviewer ?? null,
+        reviewed_at: now(),
+        ysws_record_id: ysws.id,
+    });
+    return ysws;
+}
 
 export async function listOrders(status?: string): Promise<Row[]> {
     // The user fields ride along as lookups through the `user` link, so there's

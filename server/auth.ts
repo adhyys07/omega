@@ -107,7 +107,7 @@ export default async function authRoutes(app: FastifyInstance) {
                 return reply.code(502).send({ error: 'User info fetch failed' })
             }
             const user = (await userRes.json()) as HcUser;
-            req.log.info({ userinfo: user }, 'userinfo response') // DEBUG
+            req.log.info({ userinfoKeys: Object.keys(user) }, 'userinfo response') // DEBUG (keys only — no PII values in logs)
 
             // Persist the user so the admin panel can list everyone who has signed in.
             try {
