@@ -403,7 +403,11 @@ export type SubmissionInput = {
     code_url: string;
     playable_url?: string;
     description: string;
+    hackatime_project?: string;
+    hackatime_hours?: number | null;
 };
+
+
 
 export async function createSubmission(input: SubmissionInput): Promise<Row> {
     // Identity (name/email) is pulled from the signed-in user's stored profile —
@@ -416,12 +420,17 @@ export async function createSubmission(input: SubmissionInput): Promise<Row> {
         code_url: input.code_url,
         playable_url: input.playable_url ?? "",
         description: input.description,
+        hackatime_project: input.hackatime_project ?? null,
+
         first_name: first_name ?? "",
         last_name: rest.join(" "),
         email: (u?.email as string) ?? "",
         status: "pending",
         created_at: now(),
     };
+    if (input.hackatime_hours !== null && input.hackatime_hours !== undefined) {
+        fields.hackatime_hours = input.hackatime_hours;
+    }
     return createRecord(TABLE.projectSubmissions, fields);
 }
 

@@ -409,7 +409,7 @@
       {#if !authReady}
         <span class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; opacity:.6;">…</span>
       {:else if user}
-        <a href="#submit" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 #1c1714;">→ Submit your project</a>
+        <a href="/submit" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 #1c1714;">→ Submit your project</a>
       {:else}
         <a href="/api/auth/login" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 #1c1714;">Sign in with Hack Club</a>
       {/if}
@@ -453,7 +453,7 @@
             <div style="font-family:'Syne',sans-serif; font-size:1.05rem; font-weight:800; margin-bottom:5px;">{step.title}</div>
             <div style="font-size:.88rem; color:#5b4f44; line-height:1.65;">{step.body}</div>
             {#if step.cta}
-              <a href="#submit" class="step-link" style="display:inline-flex; align-items:center; gap:6px; margin-top:11px; background:var(--orange); color:#fff; border:2px solid #1c1714; border-radius:{step.cta.radius}; padding:7px 14px; font-size:.8rem; font-weight:700; text-decoration:none; box-shadow:3px 3px 0 #1c1714;">{step.cta.label}</a>
+              <a href="/submit" class="step-link" style="display:inline-flex; align-items:center; gap:6px; margin-top:11px; background:var(--orange); color:#fff; border:2px solid #1c1714; border-radius:{step.cta.radius}; padding:7px 14px; font-size:.8rem; font-weight:700; text-decoration:none; box-shadow:3px 3px 0 #1c1714;">{step.cta.label}</a>
             {/if}
           </div>
         </div>

@@ -8,7 +8,9 @@ const BASE =  process.env.HACKATIME_BASE_URL ?? 'https://hackatime.hackclub.com'
 const AUTHORIZE_URL = `${BASE}/oauth/authorize`;
 const TOKEN_URL = `${BASE}/oauth/token`;
 const PROJECTS_URL = `${BASE}/api/v1/authenticated/projects`;
-const SCOPES = process.env.HACKATIME_SCOPES || "read";
+// The /api/v1/authenticated/* data endpoints (projects, hours) require the
+// `profile` scope — `read` alone gets a 403 "insufficient_scope". Request both.
+const SCOPES = process.env.HACKATIME_SCOPES || "read profile";
 
 const STATE_COOKIE = 'hackatime_oauth_state';
 

@@ -4,18 +4,27 @@
   // Only project-specific fields are collected here — name/email are taken from
   // the signed-in user's profile server-side, and address/birthday are gathered
   // later at the prizes step. No personal info is entered on this form.
-  let f = $state({ title: '', code_url: '', playable_url: '', description: '' })
+  let f = $state({
+     title: '', code_url: '', playable_url: '', description: '',
+     hackatime_project: '', hackatime_hours: null as number | null,
 
+   })
+
+  let projects = $state<HtProject[]>([])
+  let projectsLoaded = $state(false)
+  let htLinked = $state(true)
   let user = $state<null | { name?: string }>(null)
   let authReady = $state(false)
   let submitting = $state(false)
   let done = $state(false)
   let error = $state('')
 
+  type HtProject = { name?: string; total_seconds?: number }
+
   onMount(async () => {
     try {
       const r = await fetch('/api/auth/me')
-      if (r.ok) user = await r.json()
+      if (r.ok) { user = await r.json(); await loadProjects() }
     } catch {
       // not signed in / backend down
     } finally {
@@ -40,6 +49,27 @@
     } finally {
       submitting = false
     }
+  }
+
+  async function loadProjects(){
+    try{
+      const r = await fetch('/api/hackatime/projects')
+      if (r.status === 404) {
+        htLinked = false
+        return
+      }
+      if (!r.ok) throw new Error()
+      const data = await r.json()
+      projects = Array.isArray(data) ? data : (data.data ?? data.projects ?? [])
+    } catch {
+
+    } finally {
+      projectsLoaded = true
+    }
+  }
+  function onProjectChange() {
+    const p = projects.find((x) => x.name === f.hackatime_project)
+    f.hackatime_hours = p?.total_seconds ? Math.round((p.total_seconds / 3600) * 10) / 10 : null
   }
 
   const inputStyle =
@@ -78,6 +108,27 @@
       </p>
 
       <input bind:value={f.title} placeholder="Project title" required style={inputStyle} />
+
+      {#if !htLinked}
+        <a
+          href="/api/hackatime/login"
+          style="display:inline-flex; align-items:center; gap:6px; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; padding:13px 15px; font-weight:700; text-decoration:none; box-shadow:4px 4px 0 #1c1714;"
+        >⏱ Connect Hackatime to pick a project</a>
+      {:else if projectsLoaded && projects.length}
+        <select bind:value={f.hackatime_project} onchange={onProjectChange} required style={inputStyle}>
+          <option value="" disabled selected>Select your Hackatime project</option>
+          {#each projects as p}
+            <option value={p.name}>
+              {p.name}{p.total_seconds ? ` — ${Math.round(p.total_seconds / 3600 * 10) / 10}h` : ''}
+            </option>
+          {/each}
+        </select>
+      {:else if projectsLoaded}
+        <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44;">
+          No Hackatime projects found — you can still submit without selecting one.
+        </div>
+      {/if}
+
       <input bind:value={f.code_url} type="url" placeholder="Code URL (repository)" required style={inputStyle} />
       <input bind:value={f.playable_url} type="url" placeholder="Playable / demo URL (optional)" style={inputStyle} />
       <textarea bind:value={f.description} placeholder="Describe what you built" rows="6" required style={inputStyle}></textarea>
