@@ -21,7 +21,7 @@ export default async function submissionRoutes(app: FastifyInstance) {
         if (!user) return reply.status(401).send({ error: 'Unauthorized' });
 
         const b = (req.body ?? {}) as Partial<SubmissionInput>;
-        const required: (keyof SubmissionInput)[] = ["title", "code_url", "description"];
+        const required: (keyof SubmissionInput)[] = ["title", "code_url", "playable_url", "description"];
         for (const k of required) {
             if (!b[k] || String(b[k]).trim() === "") return reply.code(400).send({ error: `Missing field: ${k}` });
         }

@@ -426,7 +426,7 @@ export type SubmissionInput = {
     user_sub: string;
     title: string;
     code_url: string;
-    playable_url?: string;
+    playable_url: string;
     description: string;
     screenshot_url?: string;
     demo_video_url?: string;
@@ -447,7 +447,7 @@ export async function createSubmission(input: SubmissionInput): Promise<Row> {
         title: input.title,
         user_sub: input.user_sub,
         code_url: input.code_url,
-        playable_url: input.playable_url ?? "",
+        playable_url: input.playable_url,
         description: input.description,
         screenshot_url: input.screenshot_url ?? "",
         demo_video_url: input.demo_video_url ?? "",
