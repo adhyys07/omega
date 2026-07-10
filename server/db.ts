@@ -432,6 +432,8 @@ export type SubmissionInput = {
     demo_video_url?: string;
     hackatime_project?: string;
     hackatime_hours?: number | null;
+    /** YYYY-MM-DD — the project's first Hackatime heartbeat. */
+    hackatime_start_date?: string | null;
 };
 
 
@@ -460,6 +462,9 @@ export async function createSubmission(input: SubmissionInput): Promise<Row> {
     if (input.hackatime_hours !== null && input.hackatime_hours !== undefined) {
         fields.hackatime_hours = input.hackatime_hours;
     }
+    if (input.hackatime_start_date) {
+        fields.hackatime_start_date = input.hackatime_start_date;
+    }
     return createRecord(TABLE.projectSubmissions, fields);
 }
 
@@ -486,6 +491,7 @@ export async function listSubmissionsBySub(sub: string): Promise<Row[]> {
         status: r.status ?? "pending",
         code_url: r.code_url ?? null,
         hackatime_project: r.hackatime_project ?? null,
+        hackatime_start_date: r.hackatime_start_date ?? null,
         created_at: r.created_at ?? null,
     }));
 }

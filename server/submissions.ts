@@ -30,6 +30,10 @@ export default async function submissionRoutes(app: FastifyInstance) {
             return reply.code(400).send({ error: "Demo video URL must be an https link" });
         }
 
+        if (b.hackatime_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(b.hackatime_start_date)) {
+            return reply.code(400).send({ error: "Hackatime start date must be a YYYY-MM-DD date" });
+        }
+
         try {
             const row = await createSubmission({ ...(b as SubmissionInput), user_sub: user.sub });
             notifySlackOfNewSubmission(user, row).catch((err: unknown) => req.log.error(err, "slack notify failed"));

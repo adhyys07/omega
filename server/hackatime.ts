@@ -3,12 +3,11 @@ import "@fastify/cookie"; // loads the type augmentation for reply.setCookie / r
 import crypto from "node:crypto";
 import { getSessionUser } from "./auth.ts";
 import { setHackatimeToken, getHackatimeToken, syncBanFromTrust } from "./db.ts";
-import { fetchHackatimeTrustLevel } from "./hackatime-api.ts";
+import { fetchHackatimeTrustLevel, fetchHackatimeProjectDetails } from "./hackatime-api.ts";
 
 const BASE =  process.env.HACKATIME_BASE_URL ?? 'https://hackatime.hackclub.com';
 const AUTHORIZE_URL = `${BASE}/oauth/authorize`;
 const TOKEN_URL = `${BASE}/oauth/token`;
-const PROJECTS_URL = `${BASE}/api/v1/authenticated/projects`;
 // The /api/v1/authenticated/* data endpoints (projects, hours) require the
 // `profile` scope — `read` alone gets a 403 "insufficient_scope". Request both.
 const SCOPES = process.env.HACKATIME_SCOPES || "read profile";
@@ -16,15 +15,6 @@ const SCOPES = process.env.HACKATIME_SCOPES || "read profile";
 const STATE_COOKIE = 'hackatime_oauth_state';
 
 const isProd = process.env.NODE_ENV === 'production';
-
-async function fetchHackatimeProjects(accessToken: string) {
-    const res = await fetch(PROJECTS_URL, {
-        headers: {
-            'Authorization': `Bearer ${accessToken}` },
-    });
-    if (!res.ok) throw new Error(`Failed to fetch Hackatime projects: ${res.status} ${res.statusText}`);
-    return res.json();
-}
 
 export default async function hackatimeRoutes(app: FastifyInstance) {
     app.get('/api/hackatime/login', async (req, reply) => {
@@ -104,7 +94,7 @@ export default async function hackatimeRoutes(app: FastifyInstance) {
         if (!token) return reply.status(404).send({ error: 'Hackatime token not found' });
 
         try {
-            return await fetchHackatimeProjects(token);
+            return await fetchHackatimeProjectDetails(token);
         } catch (err) {
             req.log.error({ err }, 'Failed to fetch Hackatime projects');
             return reply.code(502).send({ error: 'Failed to fetch Hackatime projects' });

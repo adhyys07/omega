@@ -8,6 +8,7 @@
      title: '', code_url: '', playable_url: '', description: '', screenshot_url: '',
      demo_video_url: '',
      hackatime_project: '', hackatime_hours: null as number | null,
+     hackatime_start_date: null as string | null,
 
    })
 
@@ -34,7 +35,7 @@
   let uploadError = $state('')
   let error = $state('')
 
-  type HtProject = { name?: string; total_seconds?: number }
+  type HtProject = { name?: string; total_seconds?: number; first_heartbeat?: string | null }
 
   onMount(async () => {
     try {
@@ -116,6 +117,13 @@
   function onProjectChange() {
     const p = projects.find((x) => x.name === f.hackatime_project)
     f.hackatime_hours = p?.total_seconds ? Math.round((p.total_seconds / 3600) * 10) / 10 : null
+    f.hackatime_start_date = p?.first_heartbeat ? p.first_heartbeat.slice(0, 10) : null
+  }
+
+  function formatStartDate(iso: string) {
+    return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+      year: 'numeric', month: 'long', day: 'numeric',
+    })
   }
 
   const inputStyle =
@@ -169,6 +177,11 @@
             </option>
           {/each}
         </select>
+        {#if f.hackatime_start_date}
+          <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44; margin-top:-4px;">
+            ⏳ Started on <strong>{formatStartDate(f.hackatime_start_date)}</strong>
+          </div>
+        {/if}
       {:else if projectsLoaded}
         <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44;">
           No Hackatime projects found — you can still submit without selecting one.
