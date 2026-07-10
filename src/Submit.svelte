@@ -32,8 +32,12 @@
   let submitting = $state(false)
   let done = $state(false)
   let uploading = $state<UploadField | null>(null)
+  let compressing = $state(false)
+  let compressProgress = $state(0)
   let uploadError = $state('')
   let error = $state('')
+
+  const busy = $derived(!!uploading || compressing)
 
   type HtProject = { name?: string; total_seconds?: number; first_heartbeat?: string | null }
 
@@ -74,18 +78,38 @@
 
     uploadError = ''
     const limit = MAX_BYTES[field]
-    if (file.size > limit) {
-      uploadError = `File is too large (max ${Math.round(limit / 1024 / 1024)}MB)`
+
+    let payload = file
+    if (field === 'demo_video_url' && file.type.startsWith('video/')) {
+      compressing = true
+      compressProgress = 0
+      try {
+        // Loaded on demand — the codec library is large and most visitors never upload a video.
+        const { compressVideo } = await import('./lib/compressVideo')
+        payload = await compressVideo(file, { onProgress: (p) => (compressProgress = p) })
+      } catch (err) {
+        // Best-effort: fall back to the original and let the size check below decide.
+        console.warn('Video compression failed, using original', err)
+      } finally {
+        compressing = false
+      }
+    }
+
+    if (payload.size > limit) {
+      const mb = Math.round(limit / 1024 / 1024)
+      uploadError = payload === file
+        ? `File is too large (max ${mb}MB)`
+        : `Still ${(payload.size / 1024 / 1024).toFixed(0)}MB after compression (max ${mb}MB) — try a shorter clip`
       input.value = ''
       return
     }
 
     uploading = field
     try {
-      const r = await fetch(`/api/uploads/media?name=${encodeURIComponent(file.name)}`, {
+      const r = await fetch(`/api/uploads/media?name=${encodeURIComponent(payload.name)}`, {
       method: 'POST',
-      headers: { 'Content-Type': file.type },
-      body: file,
+      headers: { 'Content-Type': payload.type },
+      body: payload,
     })
     const data = await r.json().catch(() => ({}))
     if (!r.ok) throw new Error(data.error ?? 'Upload failed')
@@ -192,15 +216,21 @@
       <input bind:value={f.playable_url} type="url" placeholder="Playable / demo URL (optional)" style={inputStyle} />
       <textarea bind:value={f.description} placeholder="Describe what you built" rows="6" required style={inputStyle}></textarea>
       <input bind:value={f.screenshot_url} type="url" placeholder="Screenshot URL (public link)" style={inputStyle} />
-      <label style="font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#5b4f44; cursor:{uploading ? 'wait' : 'pointer'};">
+      <label style="font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
         {uploading === 'screenshot_url' ? 'Uploading screenshot…' : '⬆ or upload a screenshot'}
-        <input type="file" accept={ACCEPT.screenshot_url} disabled={!!uploading} onchange={(e) => uploadMedia(e, 'screenshot_url')} style="display:none;" />
+        <input type="file" accept={ACCEPT.screenshot_url} disabled={busy} onchange={(e) => uploadMedia(e, 'screenshot_url')} style="display:none;" />
       </label>
 
       <input bind:value={f.demo_video_url} type="url" placeholder="Demo video URL (optional)" style={inputStyle} />
-      <label style="font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#5b4f44; cursor:{uploading ? 'wait' : 'pointer'};">
-        {uploading === 'demo_video_url' ? 'Uploading video…' : '⬆ or upload a demo video (MP4, WebM, MOV — max 64MB)'}
-        <input type="file" accept={ACCEPT.demo_video_url} disabled={!!uploading} onchange={(e) => uploadMedia(e, 'demo_video_url')} style="display:none;" />
+      <label style="font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
+        {#if compressing}
+          Compressing video… {Math.round(compressProgress * 100)}%
+        {:else if uploading === 'demo_video_url'}
+          Uploading video…
+        {:else}
+          ⬆ or upload a demo video (MP4, WebM, MOV — max 64MB)
+        {/if}
+        <input type="file" accept={ACCEPT.demo_video_url} disabled={busy} onchange={(e) => uploadMedia(e, 'demo_video_url')} style="display:none;" />
       </label>
 
       {#if uploadError}
@@ -213,8 +243,8 @@
 
       <button
         type="submit"
-        disabled={submitting}
-        style="background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; padding:14px; font-family:'Syne',sans-serif; font-weight:800; font-size:1rem; cursor:pointer; box-shadow:4px 4px 0 #1c1714; opacity:{submitting ? '.6' : '1'};"
+        disabled={submitting || busy}
+        style="background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; padding:14px; font-family:'Syne',sans-serif; font-weight:800; font-size:1rem; cursor:pointer; box-shadow:4px 4px 0 #1c1714; opacity:{submitting || busy ? '.6' : '1'};"
       >{submitting ? 'Submitting…' : 'Submit project'}</button>
     </form>
   {/if}
