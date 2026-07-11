@@ -6,30 +6,167 @@ import type { Row } from './db.ts';
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 const REVIEW_CHANNEL = process.env.SLACK_REVIEW_CHANNEL;
 const SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET ?? '';
+const FRONTEND_URL = process.env.FRONTEND_URL ?? '';
 
-export async function notifySlackOfNewSubmission(user: HcUser, row: Row): Promise<void> {
-    if (!SLACK_TOKEN || !REVIEW_CHANNEL) return;
-    const blocks = [
-        { type: "header", text: { type: "plain_text", text: "🚀 New Omega submission" } },
-        { type: "section", fields: [
-            { type: "mrkdwn", text: `*Project:*\n${row.title}` },
-            { type: "mrkdwn", text: `*By:*\n${row.first_name} ${row.last_name}` },
-            { type: "mrkdwn", text: `*Code:*\n${row.code_url || "—"}` },
-            { type: "mrkdwn", text: `*Playable:*\n${row.playable_url || "—"}` },
-        ] },
-        { type: "section", text: { type: "mrkdwn", text: `*Description:*\n${String(row.description ?? "").slice(0, 2900)}` } },
-        { type: "actions", block_id: `submission:${row.id}`, elements: [
-            { type: "button", style: "primary", text: { type: "plain_text", text: "✅ Approve" }, value: row.id, action_id: "approve_submission" },
-            { type: "button", style: "danger",  text: { type: "plain_text", text: "❌ Reject"  }, value: row.id, action_id: "reject_submission" },
-        ] },
-    ];
-    const res = await fetch('https://slack.com/api/chat.postMessage', {
+/** Slack user ids allowed to act on submissions (reuse the admin allowlist). */
+const REVIEWER_IDS = new Set(
+    (process.env.ADMIN_SLACK_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+);
+
+export function isReviewer(slackUserId?: string): boolean {
+    return !!slackUserId && REVIEWER_IDS.has(slackUserId);
+}
+
+export type SubmissionState = 'pending' | 'changes_requested' | 'approved' | 'rejected';
+
+/** Thin wrapper over the Slack Web API that throws on `{ ok: false }`. */
+async function slack<T = Record<string, unknown>>(method: string, body: unknown): Promise<T & { ok: boolean }> {
+    const res = await fetch(`https://slack.com/api/${method}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${SLACK_TOKEN}`, 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify({ channel: REVIEW_CHANNEL, text: `New Omega submission by ${user.name ?? user.sub}`, blocks }),
+        headers: {
+            Authorization: `Bearer ${SLACK_TOKEN}`,
+            'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify(body),
     });
-    const data = (await res.json()) as { ok: boolean; error?: string };
-    if (!data.ok) throw new Error(`Failed to notify Slack: ${data.error}`);
+    const data = (await res.json()) as T & { ok: boolean; error?: string };
+    if (!data.ok) throw new Error(`slack.${method} failed: ${data.error}`);
+    return data;
+}
+
+const STATE_BANNER: Record<SubmissionState, string> = {
+    pending: '',
+    changes_requested: '✏️ *Changes requested*',
+    approved: '✅ *Approved* — promoted to YSWS',
+    rejected: '❌ *Rejected*',
+};
+
+/** The review card. Action buttons render only while the submission is actionable. */
+function submissionBlocks(row: Row, state: SubmissionState, actor?: string): unknown[] {
+    const blocks: unknown[] = [
+        { type: 'header', text: { type: 'plain_text', text: '🚀 Omega submission' } },
+        {
+            type: 'section',
+            fields: [
+                { type: 'mrkdwn', text: `*Project:*\n${row.title ?? '—'}` },
+                { type: 'mrkdwn', text: `*By:*\n${`${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || '—'}` },
+                { type: 'mrkdwn', text: `*Code:*\n${row.code_url || '—'}` },
+                { type: 'mrkdwn', text: `*Playable:*\n${row.playable_url || '—'}` },
+            ],
+        },
+        {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Description:*\n${String(row.description ?? '').slice(0, 2900)}` },
+        },
+    ];
+
+    if (row.demo_video_url) {
+        blocks.push({
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Demo video:*\n${row.demo_video_url}` },
+        });
+    }
+
+    if (state === 'pending') {
+        blocks.push({
+            type: 'actions',
+            block_id: `submission:${row.id}`,
+            elements: [
+                { type: 'button', style: 'primary', text: { type: 'plain_text', text: '✅ Approve' }, value: String(row.id), action_id: 'approve_submission' },
+                { type: 'button', text: { type: 'plain_text', text: '✏️ Request changes' }, value: String(row.id), action_id: 'request_changes' },
+                { type: 'button', style: 'danger', text: { type: 'plain_text', text: '❌ Reject' }, value: String(row.id), action_id: 'reject_submission' },
+            ],
+        });
+    } else {
+        blocks.push({
+            type: 'context',
+            elements: [{ type: 'mrkdwn', text: `${STATE_BANNER[state]}${actor ? ` by <@${actor}>` : ''}` }],
+        });
+    }
+    return blocks;
+}
+
+/** Posts the review card as a new top-level message. Returns the coordinates
+ *  needed to edit it or reply in its thread later, or null if Slack is unconfigured. */
+export async function notifySlackOfNewSubmission(
+    user: HcUser,
+    row: Row,
+): Promise<{ channel: string; ts: string } | null> {
+    if (!SLACK_TOKEN || !REVIEW_CHANNEL) return null;
+    const data = await slack<{ channel: string; ts: string }>('chat.postMessage', {
+        channel: REVIEW_CHANNEL,
+        text: `New Omega submission by ${user.name ?? user.sub}`,
+        blocks: submissionBlocks(row, 'pending'),
+    });
+    return { channel: data.channel, ts: data.ts };
+}
+
+/** Rewrites an existing review card in place to reflect a new state. */
+export async function updateSubmissionCard(
+    channel: string,
+    ts: string,
+    row: Row,
+    state: SubmissionState,
+    actor?: string,
+): Promise<void> {
+    if (!SLACK_TOKEN) return;
+    await slack('chat.update', {
+        channel,
+        ts,
+        text: `Submission ${state}`,
+        blocks: submissionBlocks(row, state, actor),
+    });
+}
+
+/** Replies in the review message's thread. */
+export async function postInThread(channel: string, ts: string, text: string): Promise<void> {
+    if (!SLACK_TOKEN) return;
+    await slack('chat.postMessage', { channel, thread_ts: ts, text });
+}
+
+/** DMs a user. Passing a user id as `channel` makes Slack open the IM implicitly. */
+export async function dmUser(slackUserId: string, text: string): Promise<void> {
+    if (!SLACK_TOKEN || !slackUserId) return;
+    await slack('chat.postMessage', { channel: slackUserId, text });
+}
+
+export function editLink(submissionId: string): string {
+    return `${FRONTEND_URL}/submit?edit=${encodeURIComponent(submissionId)}`;
+}
+
+/** Opens the "request changes" feedback modal. trigger_id is valid for ~3s, so
+ *  this must be called before acking the interaction, not after. */
+export async function openChangesModal(
+    triggerId: string,
+    submissionId: string,
+    channel: string,
+    ts: string,
+): Promise<void> {
+    if (!SLACK_TOKEN) return;
+    await slack('views.open', {
+        trigger_id: triggerId,
+        view: {
+            type: 'modal',
+            callback_id: 'request_changes_modal',
+            private_metadata: JSON.stringify({ id: submissionId, channel, ts }),
+            title: { type: 'plain_text', text: 'Request changes' },
+            submit: { type: 'plain_text', text: 'Send' },
+            close: { type: 'plain_text', text: 'Cancel' },
+            blocks: [
+                {
+                    type: 'input',
+                    block_id: 'feedback',
+                    label: { type: 'plain_text', text: 'What needs to change?' },
+                    element: {
+                        type: 'plain_text_input',
+                        action_id: 'value',
+                        multiline: true,
+                        placeholder: { type: 'plain_text', text: 'Be specific — this is sent to the submitter verbatim.' },
+                    },
+                },
+            ],
+        },
+    });
 }
 
 export function verifySlackSignature(req: FastifyRequest & { rawBody?: string }): boolean {
@@ -37,6 +174,6 @@ export function verifySlackSignature(req: FastifyRequest & { rawBody?: string })
     const sig = req.headers['x-slack-signature'] as string | undefined;
     if (!ts || !sig || !req.rawBody) return false;
     if (Math.abs(Date.now() / 1000 - Number(ts)) > 60 * 5) return false; // older than 5 minutes
-    const mine = "v0=" + crypto.createHmac("sha256", SIGNING_SECRET).update(`v0:${ts}:${req.rawBody}`).digest("hex");
+    const mine = 'v0=' + crypto.createHmac('sha256', SIGNING_SECRET).update(`v0:${ts}:${req.rawBody}`).digest('hex');
     try { return crypto.timingSafeEqual(Buffer.from(mine), Buffer.from(sig)); } catch { return false; }
 }

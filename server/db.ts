@@ -492,10 +492,14 @@ export async function listSubmissionsBySub(sub: string): Promise<Row[]> {
         code_url: r.code_url ?? null,
         hackatime_project: r.hackatime_project ?? null,
         hackatime_start_date: r.hackatime_start_date ?? null,
+        review_feedback: r.review_feedback ?? null,
+        playable_url: r.playable_url ?? null,
+        description: r.description ?? null,
+        screenshot_url: r.screenshot_url ?? null,
+        demo_video_url: r.demo_video_url ?? null,
         created_at: r.created_at ?? null,
     }));
 }
-
 
 export async function rejectSubmission(id: string, reviewer?: string): Promise<void> {
     await updateRecord(TABLE.projectSubmissions, id, {
@@ -519,6 +523,7 @@ export async function approveSubmission(id: string, reviewer?: string): Promise<
         "Playable URL": s.playable_url ?? "",
         "Description": s.description ?? "",
     };
+    
 
     const ysws = await createRecord(TABLE.yswsSubmissions, y);
 
@@ -529,6 +534,35 @@ export async function approveSubmission(id: string, reviewer?: string): Promise<
         ysws_record_id: ysws.id,
     });
     return ysws;
+}
+
+export async function setSubmissionSlackRef(id: string, channel: string, ts: string): Promise<void> {
+  await updateRecord(TABLE.projectSubmissions, id, { slack_channel: channel, slack_ts: ts })
+}
+
+export async function requestSubmissionChanges(id: string, reviewer: string, feedback: string): Promise<void> {
+  await updateRecord(TABLE.projectSubmissions, id, {
+    status: 'changes_requested',
+    review_feedback: feedback,
+    reviewed_by: reviewer,
+    reviewed_at: now(),
+  })
+}
+
+export async function resubmitSubmission(
+    id:string,
+    patch: Partial<Pick<SubmissionInput, 'title' | 'code_url' | 'playable_url' | 'description' | 'screenshot_url' | 'demo_video_url' >>
+): Promise<Row | null> {
+    return updateRecord(TABLE.projectSubmissions, id, {
+        ...patch,
+        status: 'pending',
+        resubmitted_at: now(),
+    });
+}
+
+export async function getSlackIdForSub(sub: string): Promise<string | null> {
+  const u = await findAuthUser(sub)
+  return ((u?.slack_id as string) ?? null) || null
 }
 
 export async function listOrders(status?: string): Promise<Row[]> {

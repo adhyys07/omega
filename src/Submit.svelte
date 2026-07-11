@@ -29,8 +29,13 @@
     title: string | null
     status: string
     code_url: string | null
+    playable_url: string | null
+    description: string | null
+    screenshot_url: string | null
+    demo_video_url: string | null
     hackatime_project: string | null
     hackatime_start_date: string | null
+    review_feedback: string | null
     created_at: string
   }
 
@@ -49,11 +54,16 @@
   let uploadError = $state('')
   let error = $state('')
 
+  // Reship mode: /submit?edit=recXXX prefills the form and PATCHes instead of POSTing.
+  let editId = $state<string | null>(null)
+  let reviewFeedback = $state<string | null>(null)
+
   const busy = $derived(!!uploading || compressing)
 
   type HtProject = { name?: string; total_seconds?: number; first_heartbeat?: string | null }
 
   onMount(async () => {
+    editId = new URLSearchParams(location.search).get('edit')
     try {
       const r = await fetch('/api/auth/me')
       if (r.ok) { user = await r.json(); await Promise.all([loadProjects(), loadSubmissions()]) }
@@ -62,15 +72,31 @@
     } finally {
       authReady = true
     }
+    if (editId) prefillForEdit(editId)
   })
+
+  function prefillForEdit(id: string) {
+    const s = submissions.find((x) => x.id === id)
+    if (!s) { editId = null; return }  // not theirs, or not loaded — fall back to a fresh submission
+    if (s.status !== 'changes_requested') { editId = null; return }
+    reviewFeedback = s.review_feedback
+    f.title = s.title ?? ''
+    f.code_url = s.code_url ?? ''
+    f.playable_url = s.playable_url ?? ''
+    f.description = s.description ?? ''
+    f.screenshot_url = s.screenshot_url ?? ''
+    f.demo_video_url = s.demo_video_url ?? ''
+    f.hackatime_project = s.hackatime_project ?? ''
+    f.hackatime_start_date = s.hackatime_start_date ?? null
+  }
 
   async function submit(e: Event) {
     e.preventDefault()
     submitting = true
     error = ''
     try {
-      const r = await fetch('/api/submissions', {
-        method: 'POST',
+      const r = await fetch(editId ? `/api/submissions/${editId}` : '/api/submissions', {
+        method: editId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(f),
       })
@@ -100,7 +126,12 @@
   approved: 'background:rgba(74,150,80,.16); color:#3d7a40;',
   rejected: 'background:rgba(179,38,30,.14); color:#b3261e;',
   pending:  'background:rgba(255,179,71,.22); color:#b07410;',
+  changes_requested: 'background:rgba(47,109,176,.14); color:#2f6db0;',
 }
+
+  const STATUS_LABEL: Record<string, string> = {
+    changes_requested: 'changes requested',
+  }
 
   const fmtDate = (iso: string) => 
     iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'
@@ -207,7 +238,7 @@
 
   {:else if done}
     <div style="text-align:center; max-width:520px; font-family:'Space Grotesk',sans-serif;">
-      <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem; color:#1c1714; margin-bottom:8px;">🎉 Submission received!</div>
+      <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem; color:#1c1714; margin-bottom:8px;">{editId ? '♻️ Reshipped!' : '🎉 Submission received!'}</div>
       <p style="color:#5b4f44;">Our reviewers will take it from here — you'll hear back once it's been looked at.</p>
       <a href="/" style="display:inline-block; margin-top:22px; color:#c2451a; font-weight:700; text-decoration:none;">← Back home</a>
     </div>
@@ -219,10 +250,17 @@
       onsubmit={submit}
       style="width:100%; display:flex; flex-direction:column; gap:12px; background:#fbf4e6; border:3px solid #1c1714; border-radius:18px 12px 16px 13px/13px 16px 12px 18px; box-shadow:7px 7px 0 #1c1714; padding:30px;"
     >
-      <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem; color:#1c1714; margin:0;">Submit your project</h1>
+      <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem; color:#1c1714; margin:0;">{editId ? 'Reship your project' : 'Submit your project'}</h1>
       <p style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44; margin:0 0 2px;">
         Submitting as <strong>{user.name ?? 'you'}</strong>. We'll pull your details from your account.
       </p>
+
+      {#if editId && reviewFeedback}
+        <div style="background:rgba(47,109,176,.1); border:2px solid #2f6db0; border-radius:11px 8px 12px 9px/9px 12px 8px 11px; padding:12px 14px; font-family:'Space Grotesk',sans-serif; font-size:.82rem; color:#1c1714;">
+          <div style="font-weight:700; color:#2f6db0; margin-bottom:4px;">✏️ Changes requested by the reviewer</div>
+          <div style="white-space:pre-wrap; line-height:1.5;">{reviewFeedback}</div>
+        </div>
+      {/if}
 
       <input bind:value={f.title} placeholder="Project title" required style={inputStyle} />
 
@@ -294,7 +332,7 @@
         type="submit"
         disabled={submitting || busy}
         style="background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; padding:14px; font-family:'Syne',sans-serif; font-weight:800; font-size:1rem; cursor:pointer; box-shadow:4px 4px 0 #1c1714; opacity:{submitting || busy ? '.6' : '1'};"
-      >{submitting ? 'Submitting…' : 'Submit project'}</button>
+      >{submitting ? (editId ? 'Reshipping…' : 'Submitting…') : (editId ? 'Reship project' : 'Submit project')}</button>
     </form>
       </div>
 
@@ -334,8 +372,11 @@
                       </td>
                       <td style="padding:11px 10px 11px 0;">
                         <span style="display:inline-block; padding:3px 9px; border:1.5px solid #1c1714; border-radius:6px; font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; {STATUS_STYLE[s.status] ?? STATUS_STYLE.pending}">
-                          {s.status}
+                          {STATUS_LABEL[s.status] ?? s.status}
                         </span>
+                        {#if s.status === 'changes_requested'}
+                          <a href="/submit?edit={s.id}" style="display:block; margin-top:4px; color:#2f6db0; font-size:.7rem; font-weight:700; text-decoration:none;">✏️ Reship →</a>
+                        {/if}
                       </td>
                       <td style="padding:11px 0; color:#5b4f44; white-space:nowrap;">{fmtDate(s.created_at)}</td>
                     </tr>
