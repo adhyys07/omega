@@ -41,6 +41,76 @@ const STATE_BANNER: Record<SubmissionState, string> = {
     rejected: '❌ *Rejected*',
 };
 
+async function slackGet<T = Record<string, unknown>>(
+    method: string,
+    params: Record<string, string>,
+): Promise<T & { ok: boolean }> {
+    const qs = new URLSearchParams(params);
+    const res = await fetch(`https://slack.com/api/${method}?${qs}`, {
+        headers: { Authorization: `Bearer ${SLACK_TOKEN}` },
+    });
+    const data = (await res.json()) as T & { ok: boolean; error?: string };
+    if (!data.ok) throw new Error(`slack.${method} failed: ${data.error}`);
+    return data;
+}
+
+export type ThreadMessage = {
+    ts: string;
+    userId: string | null;
+    text: string;
+    isBot: boolean;
+    isParent: boolean;
+};
+
+const userNameCache = new Map<string, string>();
+
+async function displayName(userId: string): Promise<string> {
+    const hit = userNameCache.get(userId);
+    if (hit) return hit;
+    try {
+        const d = await slackGet<{ user?: { real_name?: string; name?: string } }>('users.info', { user: userId });
+        const name = d.user?.real_name ?? d.user?.name ?? userId;
+        userNameCache.set(userId, name);
+        return name;
+    } catch {
+        return userId;
+    }
+}
+
+export async function fetchThreadReplies(channel: string, ts: string): Promise<ThreadMessage[]> {
+    if (!SLACK_TOKEN) return [];
+    const data = await slackGet<{
+        messages?: { ts: string; user?: string; text?: string; bot_id?: string; username?: string }[];
+    }>('conversations.replies', { channel, ts, limit: '100' });
+
+    const msgs = data.messages ?? [];
+    return Promise.all(
+        msgs.map(async (m) => ({
+            ts: m.ts,
+            userId: m.user ?? null,
+            author: m.bot_id ? (m.username ?? 'Omega bot') : m.user ? await displayName(m.user) : 'unknown',
+            text: m.text ?? '',
+            isBot: !!m.bot_id,
+            isParent: m.ts === ts,
+        })),
+    );
+}
+
+export async function postReviewerMessage(
+    channel: string,
+    ts: string,
+    author: string,
+    text: string,
+): Promise<void> {
+    if (!SLACK_TOKEN) return;
+    await slack('chat.postMessage', {
+        channel,
+        thread_ts: ts,
+        text: `*${author}*: ${text}`,
+    });
+}
+
+    
 /** The review card. Action buttons render only while the submission is actionable. */
 function submissionBlocks(row: Row, state: SubmissionState, actor?: string): unknown[] {
     const blocks: unknown[] = [

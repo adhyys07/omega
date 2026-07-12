@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-
+  import Review from './Review.svelte'
 
   let path = $state(location.pathname)
   onMount(() => {
@@ -17,12 +17,14 @@
 
   const TOOLS = [
     { id: 'users',    label: '◉ Users',     href: '/admin' },
+    { id: 'review',   label: '⚖ Review',    href: '/admin/review' },
     { id: 'orders',   label: '☑ Fulfillment',     href: '/admin/orders' },
     { id: 'items',    label: '▣ Shop items', href: '/admin/items' },
     { id: 'signups',  label: '✉ Signups',    href: '/admin/signups' },
   ] as const
 
   const active = $derived(
+    path.startsWith('/admin/review') ? 'review' :
     path.startsWith('/admin/orders') ? 'orders' :
     path.startsWith('/admin/items') ? 'items' :
     path.startsWith('/admin/signups') ? 'signups' :
@@ -662,6 +664,12 @@
         </div>
       {/if}
     </div>
+
+  {:else if active === 'review'}
+    <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>
+    <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,7vw,3.4rem); letter-spacing:-.02em; margin:0 0 8px; text-shadow:3px 3px 0 rgba(255,69,0,.16);">Review</h1>
+    <p style="font-size:1rem; color:#5b4f44; margin:0 0 24px;">Every submission and its Slack thread. Messages you send here land in the project's thread.</p>
+    <Review />
 
   {:else if active === 'signups'}
     <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>
