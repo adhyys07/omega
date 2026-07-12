@@ -53,7 +53,15 @@
   let compressProgress = $state(0)
   let uploadError = $state('')
   let error = $state('')
-
+  let ghCheck = $state<null | {
+    host: 'github' | 'other'
+    isPublic: boolean
+    exists: boolean
+    readme: { found: boolean; chars: number; tooSmall: boolean } | null
+    error?: string
+  } >(null)
+  let ghChecking = $state(false)
+  let ghSeq = 0
   // Reship mode: /submit?edit=recXXX prefills the form and PATCHes instead of POSTing.
   let editId = $state<string | null>(null)
   let reviewFeedback = $state<string | null>(null)
@@ -119,6 +127,22 @@
       // ignore
     } finally {
       submissionsLoaded = true
+    }
+  }
+
+  async function checkRepo(){
+    const url = f.code_url.trim()
+    ghCheck = null
+    if (!url) return
+    const seq = ++ghSeq
+    ghChecking = true
+    try {
+      const r = await fetch(`/api/github/check?url=${encodeURIComponent(url)}`)
+      const data = await r.json()
+      if (seq === ghSeq) ghCheck = data
+    } catch {
+    } finally {
+      if (seq === ghSeq) ghChecking = false
     }
   }
 
@@ -290,9 +314,27 @@
       {/if}
 
       <div class="row">
-        <input bind:value={f.code_url} type="url" placeholder="Code URL (repository)" required style={inputStyle} />
+        <input bind:value={f.code_url} onblur={checkRepo} type="url" placeholder="Code URL (repository)" required style={inputStyle} />
         <input bind:value={f.playable_url} type="url" placeholder="Playable / demo URL" required style={inputStyle} />
       </div>
+
+      {#if ghChecking}
+        <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; margin-top:-6px;">Checking repo…</div>
+      {:else if ghCheck}
+        {#if ghCheck.host === 'other'}
+          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; margin-top:-6px;">Not a GitHub URL — reviewers will open it manually.</div>
+        {:else if ghCheck.error}
+          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Couldn't verify: {ghCheck.error}</div>
+        {:else if !ghCheck.isPublic}
+          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b3261e; font-weight:700; margin-top:-6px;">❌ This repo isn't public — reviewers won't be able to open it.</div>
+        {:else if ghCheck.readme && !ghCheck.readme.found}
+          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Public, but no README found. Reviewers rely on it.</div>
+        {:else if ghCheck.readme && ghCheck.readme.tooSmall}
+          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Public ✓ — but the README looks thin ({ghCheck.readme.chars} chars). Consider expanding it.</div>
+        {:else}
+          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#3d7a40; font-weight:700; margin-top:-6px;">✓ Public repo with a README.</div>
+        {/if}
+      {/if}
 
       <textarea bind:value={f.description} placeholder="Describe what you built" rows="3" required class="description" style={inputStyle}></textarea>
 

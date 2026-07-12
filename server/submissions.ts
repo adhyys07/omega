@@ -6,7 +6,7 @@ import {
   resubmitSubmission, getSlackIdForSub, type SubmissionInput,
 } from './db.ts';
 import { notifySlackOfNewSubmission, verifySlackSignature , isReviewer, updateSubmissionCard, postInThread, dmUser, openChangesModal, editLink } from "./slack.ts";
-
+import { checkGithubRepo } from "./github-api.ts";
 
 export default async function submissionRoutes(app: FastifyInstance) {
     app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (req, body, done) => {
@@ -89,6 +89,17 @@ export default async function submissionRoutes(app: FastifyInstance) {
         }
         return reply.code(200).send({ ok: true });
     });
+
+    app.get("/api/github/check", async (req, reply) => {
+        const user = getSessionUser(req);
+        if (!user) return reply.status(401).send({ error: 'Unauthorized' });
+
+        const url = (req.query as { url?: string }).url;
+        if (!url) return reply.code(400).send({ error: "Missing url query param" });
+
+        return checkGithubRepo(url)
+    });
+
 
     app.post('/api/slack/interactivity', async (req, reply) => {
         if (!verifySlackSignature(req as any)) return reply.code(401).send("Bad Signature");
