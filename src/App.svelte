@@ -5,6 +5,7 @@
   import Banned from './Banned.svelte'
   import Docs from './Docs.svelte'
   import Submit from './Submit.svelte'
+  import Pitch from './Pitch.svelte'
 
   const target = new Date('2026-07-27T00:00:00').getTime()
   let d = $state('00')
@@ -161,7 +162,7 @@
       r: '48% 52% 50% 50%/55% 48% 52% 45%',
       title: 'Pitch your idea',
       body: "Submit a proposal — tell us what you're building and how it'll help people. We'll review and get back to you.",
-      cta: { label: 'Submit proposal →', radius: '9px 6px 10px 5px/5px 10px 6px 9px' },
+      cta: { label: 'Submit proposal →', href: '/pitch', radius: '9px 6px 10px 5px/5px 10px 6px 9px' },
     },
     {
       n: '02',
@@ -175,7 +176,7 @@
       r: '48% 52% 50% 50%/55% 48% 52% 45%',
       title: 'Submit your project',
       body: 'Drop your repo, a demo video, and your hour log. Up to 2 projects per person over two months.',
-      cta: { label: 'Submit project →', radius: '6px 9px 5px 10px/10px 5px 9px 6px' },
+      cta: { label: 'Submit project →', href: '/submit', radius: '6px 9px 5px 10px/10px 5px 9px 6px' },
     },
     {
       n: '04',
@@ -256,6 +257,8 @@
   <Docs />
 {:else if path === '/submit'}
   <Submit />
+{:else if path === '/pitch'}
+  <Pitch />
 {:else}
 <div class="omega">
   <!-- paper grain overlay -->
@@ -453,7 +456,7 @@
             <div style="font-family:'Syne',sans-serif; font-size:1.05rem; font-weight:800; margin-bottom:5px;">{step.title}</div>
             <div style="font-size:.88rem; color:#5b4f44; line-height:1.65;">{step.body}</div>
             {#if step.cta}
-              <a href="/submit" class="step-link" style="display:inline-flex; align-items:center; gap:6px; margin-top:11px; background:var(--orange); color:#fff; border:2px solid #1c1714; border-radius:{step.cta.radius}; padding:7px 14px; font-size:.8rem; font-weight:700; text-decoration:none; box-shadow:3px 3px 0 #1c1714;">{step.cta.label}</a>
+              <a href={step.cta.href} class="step-link" style="display:inline-flex; align-items:center; gap:6px; margin-top:11px; background:var(--orange); color:#fff; border:2px solid #1c1714; border-radius:{step.cta.radius}; padding:7px 14px; font-size:.8rem; font-weight:700; text-decoration:none; box-shadow:3px 3px 0 #1c1714;">{step.cta.label}</a>
             {/if}
           </div>
         </div>

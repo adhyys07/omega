@@ -5,12 +5,18 @@
   // the signed-in user's profile server-side, and address/birthday are gathered
   // later at the prizes step. No personal info is entered on this form.
   let f = $state({
+     pitch_id: '',
      title: '', code_url: '', playable_url: '', description: '', screenshot_url: '',
      demo_video_url: '',
      hackatime_project: '', hackatime_hours: null as number | null,
      hackatime_start_date: null as string | null,
 
    })
+
+  // You pitch before you build: only an approved pitch unlocks this form.
+  type EligiblePitch = { id: string; title: string | null }
+  let eligiblePitches = $state<EligiblePitch[]>([])
+  let pitchesLoaded = $state(false)
 
   type UploadField = 'screenshot_url' | 'demo_video_url'
 
@@ -74,7 +80,7 @@
     editId = new URLSearchParams(location.search).get('edit')
     try {
       const r = await fetch('/api/auth/me')
-      if (r.ok) { user = await r.json(); await Promise.all([loadProjects(), loadSubmissions()]) }
+      if (r.ok) { user = await r.json(); await Promise.all([loadProjects(), loadSubmissions(), loadEligiblePitches()]) }
     } catch {
       // not signed in / backend down
     } finally {
@@ -127,6 +133,20 @@
       // ignore
     } finally {
       submissionsLoaded = true
+    }
+  }
+
+  async function loadEligiblePitches(){
+    try {
+      const r = await fetch('/api/submissions/eligible-pitches')
+      if (!r.ok) throw new Error()
+      eligiblePitches = await r.json()
+      // One approved pitch? Pick it — no reason to make them choose from a list of one.
+      if (eligiblePitches.length === 1) f.pitch_id = eligiblePitches[0].id
+    } catch {
+      // ignore — the locked state below covers it
+    } finally {
+      pitchesLoaded = true
     }
   }
 
@@ -267,6 +287,22 @@
       <a href="/" style="display:inline-block; margin-top:22px; color:#c2451a; font-weight:700; text-decoration:none;">← Back home</a>
     </div>
 
+  {:else if !editId && pitchesLoaded && !eligiblePitches.length}
+    <!-- Step 01 gates step 03: no approved pitch, no project submission. -->
+    <div style="text-align:center; max-width:520px; font-family:'Space Grotesk',sans-serif;">
+      <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem; color:#1c1714; margin-bottom:8px;">💡 Pitch your idea first</div>
+      <p style="color:#5b4f44; line-height:1.6;">
+        Projects need an <strong>approved pitch</strong> before you can submit them — that's how we make sure you don't sink 20+ hours into something we can't accept.
+      </p>
+      <a
+        href="/pitch"
+        style="display:inline-flex; margin-top:22px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; padding:13px 26px; font-weight:800; text-decoration:none; box-shadow:4px 4px 0 #1c1714;"
+      >Pitch an idea →</a>
+      <div style="margin-top:14px;">
+        <a href="/" style="color:#c2451a; font-weight:700; text-decoration:none; font-size:.85rem;">← Back home</a>
+      </div>
+    </div>
+
   {:else}
     <div class="submit-grid">
       <div class="pane pane-form">
@@ -278,6 +314,19 @@
       <p style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44; margin:0 0 2px;">
         Submitting as <strong>{user.name ?? 'you'}</strong>. We'll pull your details from your account.
       </p>
+
+      {#if !editId && eligiblePitches.length > 1}
+        <select bind:value={f.pitch_id} required style={inputStyle}>
+          <option value="" disabled selected>Which approved pitch is this?</option>
+          {#each eligiblePitches as p}
+            <option value={p.id}>{p.title ?? 'Untitled pitch'}</option>
+          {/each}
+        </select>
+      {:else if !editId && eligiblePitches.length === 1}
+        <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#3d7a40; font-weight:700;">
+          ✓ Building on your approved pitch: <strong>{eligiblePitches[0].title ?? 'Untitled'}</strong>
+        </div>
+      {/if}
 
       {#if editId && reviewFeedback}
         <div style="background:rgba(47,109,176,.1); border:2px solid #2f6db0; border-radius:11px 8px 12px 9px/9px 12px 8px 11px; padding:12px 14px; font-family:'Space Grotesk',sans-serif; font-size:.82rem; color:#1c1714;">

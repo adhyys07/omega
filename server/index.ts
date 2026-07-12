@@ -9,6 +9,7 @@ import HackatimeRoutes from './hackatime.ts'
 import submissionRoutes from './submissions.ts'
 import uploadRoutes from './uploads.ts'
 import reviewRoutes from './review.ts'
+import pitchRoutes from './pitches.ts'
 
 const app = Fastify({ logger: true })
 
@@ -25,6 +26,7 @@ await app.register(submissionRoutes)
 await app.register(uploadRoutes)
 await app.register(adminRoutes)
 await app.register(reviewRoutes)
+await app.register(pitchRoutes)
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 

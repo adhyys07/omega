@@ -4,8 +4,13 @@ import {
   createSubmission, approveSubmission, rejectSubmission, listSubmissionsBySub,
   getSubmissionById, setSubmissionSlackRef, requestSubmissionChanges,
   resubmitSubmission, getSlackIdForSub, type SubmissionInput,
+  getPitchById, approvePitch, rejectPitch, requestPitchChanges, listApprovedPitchesBySub,
 } from './db.ts';
-import { notifySlackOfNewSubmission, verifySlackSignature , isReviewer, updateSubmissionCard, postInThread, dmUser, openChangesModal, editLink } from "./slack.ts";
+import {
+  notifySlackOfNewSubmission, verifySlackSignature, isReviewer, updateSubmissionCard,
+  updateReviewCard, postInThread, dmUser, openChangesModal, editLink, pitchEditLink,
+  parseActionValue, frontendUrl, type ReviewKind,
+} from "./slack.ts";
 import { checkGithubRepo } from "./github-api.ts";
 
 export default async function submissionRoutes(app: FastifyInstance) {
@@ -20,14 +25,38 @@ export default async function submissionRoutes(app: FastifyInstance) {
         return listSubmissionsBySub(user.sub);
     });
 
+    /** The approved pitches this user may attach a project to. Empty = they can't submit yet. */
+    app.get('/api/submissions/eligible-pitches', async (req, reply) => {
+        const user = getSessionUser(req);
+        if (!user) return reply.status(401).send({ error: 'Not authenticated' });
+        return listApprovedPitchesBySub(user.sub);
+    });
+
     app.post('/api/submissions', async (req, reply) => {
         const user = getSessionUser(req);
         if (!user) return reply.status(401).send({ error: 'Unauthorized' });
 
         const b = (req.body ?? {}) as Partial<SubmissionInput>;
-        const required: (keyof SubmissionInput)[] = ["title", "code_url", "playable_url", "description"];
+        const required: (keyof SubmissionInput)[] = ["pitch_id", "title", "code_url", "playable_url", "description"];
         for (const k of required) {
             if (!b[k] || String(b[k]).trim() === "") return reply.code(400).send({ error: `Missing field: ${k}` });
+        }
+
+        // You pitch before you build: a project must fulfil one of YOUR approved pitches.
+        // Client-side selection is not trustworthy — re-check ownership and status here.
+        let pitch;
+        try {
+            pitch = await getPitchById(String(b.pitch_id));
+        } catch (err) {
+            // Never surface raw Airtable errors: they name tables and leak token permissions.
+            req.log.error(err, "pitch lookup failed");
+            return reply.code(500).send({ error: "Could not verify your pitch" });
+        }
+        if (!pitch || pitch.user_sub !== user.sub) {
+            return reply.code(403).send({ error: "Pick one of your own pitches" });
+        }
+        if (pitch.status !== "approved") {
+            return reply.code(409).send({ error: "That pitch hasn't been approved yet" });
         }
 
         if (b.demo_video_url && !/^https:\/\//i.test(b.demo_video_url.trim())) {
@@ -108,7 +137,9 @@ export default async function submissionRoutes(app: FastifyInstance) {
 
         // --- reviewer submitted the "request changes" modal ---
         if (payload.type === "view_submission" && payload.view?.callback_id === "request_changes_modal") {
-            const { id, channel, ts } = JSON.parse(payload.view.private_metadata || "{}");
+            const meta = JSON.parse(payload.view.private_metadata || "{}");
+            const { id, channel, ts } = meta;
+            const kind: ReviewKind = meta.kind === "pitch" ? "pitch" : "project";
             const feedback = String(payload.view.state?.values?.feedback?.value?.value ?? "").trim();
             if (!feedback) {
                 return reply.code(200).send({ response_action: "errors", errors: { feedback: "Please describe what needs to change." } });
@@ -119,15 +150,23 @@ export default async function submissionRoutes(app: FastifyInstance) {
 
             void (async () => {
                 try {
-                    await requestSubmissionChanges(id, payload.user?.username ?? payload.user?.id, feedback);
-                    const row = await getSubmissionById(id);
+                    const reviewer = payload.user?.username ?? payload.user?.id;
+                    const isPitch = kind === "pitch";
+
+                    if (isPitch) await requestPitchChanges(id, reviewer, feedback);
+                    else await requestSubmissionChanges(id, reviewer, feedback);
+
+                    const row = isPitch ? await getPitchById(id) : await getSubmissionById(id);
                     if (!row) return;
+
                     const quoted = feedback.replace(/\n/g, "\n>");
                     await postInThread(channel, ts, `✏️ <@${payload.user.id}> requested changes:\n>${quoted}`);
-                    await updateSubmissionCard(channel, ts, row, "changes_requested", payload.user.id);
+                    await updateReviewCard(kind, channel, ts, row, "changes_requested", payload.user.id);
+
                     const slackId = await getSlackIdForSub(String(row.user_sub));
                     if (slackId) {
-                        await dmUser(slackId, `Your Omega submission *${row.title}* needs changes:\n\n>${quoted}\n\nReship it here: ${editLink(id)}`);
+                        const link = isPitch ? pitchEditLink(id) : editLink(id);
+                        await dmUser(slackId, `Your Omega ${isPitch ? "pitch" : "submission"} *${row.title}* needs changes:\n\n>${quoted}\n\nReship it here: ${link}`);
                     }
                 } catch (err) {
                     req.log.error(err, "request_changes handling failed");
@@ -140,8 +179,10 @@ export default async function submissionRoutes(app: FastifyInstance) {
         if (payload.type !== "block_actions") return reply.code(200).send();
 
         const action = payload.actions?.[0];
-        const id: string | undefined = action?.value;
-        if (!id) return reply.code(400).send();
+        if (!action?.value) return reply.code(400).send();
+        // Buttons carry `kind:id`; cards posted before pitches existed carry a bare id.
+        const { kind, id } = parseActionValue(String(action.value));
+        const isPitch = kind === "pitch";
 
         // Signature proves the request is from Slack; this proves the clicker may review.
         if (!isReviewer(payload.user?.id)) {
@@ -152,7 +193,7 @@ export default async function submissionRoutes(app: FastifyInstance) {
             return reply.code(200).send();
         }
 
-        const row = await getSubmissionById(id);
+        const row = isPitch ? await getPitchById(id) : await getSubmissionById(id);
         if (!row) return reply.code(200).send();
         const channel = String(row.slack_channel ?? payload.channel?.id ?? "");
         const ts = String(row.slack_ts ?? payload.message?.ts ?? "");
@@ -160,7 +201,7 @@ export default async function submissionRoutes(app: FastifyInstance) {
         // The modal must open within trigger_id's ~3s window — before acking.
         if (action.action_id === "request_changes") {
             try {
-                await openChangesModal(payload.trigger_id, id, channel, ts);
+                await openChangesModal(payload.trigger_id, kind, id, channel, ts);
             } catch (err) {
                 req.log.error(err, "open changes modal failed");
             }
@@ -173,17 +214,32 @@ export default async function submissionRoutes(app: FastifyInstance) {
         void (async () => {
             const approved = action.action_id === "approve_submission";
             try {
-                if (approved) await approveSubmission(id, payload.user?.username);
-                else await rejectSubmission(id, payload.user?.username);
-                await updateSubmissionCard(channel, ts, row, approved ? "approved" : "rejected", payload.user.id);
+                if (isPitch) {
+                    if (approved) await approvePitch(id, payload.user?.username);
+                    else await rejectPitch(id, payload.user?.username);
+                } else {
+                    if (approved) await approveSubmission(id, payload.user?.username);
+                    else await rejectSubmission(id, payload.user?.username);
+                }
+                await updateReviewCard(kind, channel, ts, row, approved ? "approved" : "rejected", payload.user.id);
+
                 const slackId = await getSlackIdForSub(String(row.user_sub));
                 if (slackId) {
-                    await dmUser(slackId, approved
-                        ? `🎉 Your Omega submission *${row.title}* was approved!`
-                        : `Your Omega submission *${row.title}* was rejected. Ask in #omega if you'd like context.`);
+                    let msg: string;
+                    if (isPitch) {
+                        msg = approved
+                            // An approved pitch is what unlocks project submission — say so.
+                            ? `💡 Your Omega pitch *${row.title}* was approved — start building! Submit the finished project here: ${frontendUrl()}/submit`
+                            : `Your Omega pitch *${row.title}* was rejected. Ask in #omega if you'd like context.`;
+                    } else {
+                        msg = approved
+                            ? `🎉 Your Omega submission *${row.title}* was approved!`
+                            : `Your Omega submission *${row.title}* was rejected. Ask in #omega if you'd like context.`;
+                    }
+                    await dmUser(slackId, msg);
                 }
             } catch (err) {
-                req.log.error(err, "submission approval/rejection failed");
+                req.log.error(err, "approval/rejection failed");
                 if (channel && ts) await postInThread(channel, ts, `⚠️ Failed to process: ${String(err)}`).catch(() => {});
             }
         })();

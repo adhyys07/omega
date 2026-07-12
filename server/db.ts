@@ -16,6 +16,7 @@ const TABLE = {
     orders: "orders",
     signups: "signups",
     tokenAdjustments: "token_adjustments",
+    pitches: "pitches",
     projectSubmissions: "project_submissions",
     yswsSubmissions: "YSWS Project Submission",
 } as const;
@@ -424,6 +425,8 @@ export async function getAuthUserContact(sub:string,): Promise<{ phone_number: s
 // -- Submissions -----------------------------------------------------------------
 export type SubmissionInput = {
     user_sub: string;
+    /** The approved pitch this project fulfills — required; you pitch before you build. */
+    pitch_id: string;
     title: string;
     code_url: string;
     playable_url: string;
@@ -446,6 +449,7 @@ export async function createSubmission(input: SubmissionInput): Promise<Row> {
     const fields: Record<string, unknown> = {
         title: input.title,
         user_sub: input.user_sub,
+        pitch_id: input.pitch_id,
         code_url: input.code_url,
         playable_url: input.playable_url,
         description: input.description,
@@ -563,6 +567,130 @@ export async function resubmitSubmission(
 export async function getSlackIdForSub(sub: string): Promise<string | null> {
   const u = await findAuthUser(sub)
   return ((u?.slack_id as string) ?? null) || null
+}
+
+/** The OIDC sub behind a Slack user id — the inverse of getSlackIdForSub. */
+export async function getSubForSlackId(slackId: string): Promise<string | null> {
+    const row = await findOne(TABLE.authUsers, `{slack_id}='${esc(slackId)}'`);
+    return (row?.sub as string) ?? null;
+}
+
+// --- Pitches ----------------------------------------------------------------
+// A pitch is the idea a builder proposes *before* spending 20+ hours on it.
+// Reviewers approve/reject it through the same Slack card + thread flow as a
+// project submission; an approved pitch is what unlocks project submission.
+
+export type PitchInput = {
+    user_sub: string;
+    title: string;
+    description: string;
+    /** How the idea helps people — the second half of the landing-page prompt. */
+    why: string;
+};
+
+/** The AUTHOR-facing shape of a pitch. This is a whitelist on purpose: anything
+ *  not listed here can never reach the person who submitted it. `duplicate_check`
+ *  is deliberately absent — it's a reviewer-only signal. */
+function pitchView(r: Row): Row {
+    return {
+        id: r.id,
+        title: r.title ?? null,
+        description: r.description ?? null,
+        why: r.why ?? null,
+        status: r.status ?? "pending",
+        review_feedback: r.review_feedback ?? null,
+        first_name: r.first_name ?? null,
+        last_name: r.last_name ?? null,
+        created_at: r.created_at ?? null,
+    };
+}
+
+/** Stores the reviewer-only duplicate-idea verdict as JSON. */
+export async function setPitchDuplicateCheck(id: string, check: unknown): Promise<void> {
+    await updateRecord(TABLE.pitches, id, { duplicate_check: JSON.stringify(check) });
+}
+
+export async function createPitch(input: PitchInput): Promise<Row> {
+    const u = await findAuthUser(input.user_sub);
+    const [first_name, ...rest] = String(u?.name ?? "").split(" ");
+    return createRecord(TABLE.pitches, {
+        user_sub: input.user_sub,
+        title: input.title,
+        description: input.description,
+        why: input.why,
+        first_name: first_name ?? "",
+        last_name: rest.join(" "),
+        email: (u?.email as string) ?? "",
+        status: "pending",
+        created_at: now(),
+    });
+}
+
+export async function getPitchById(id: string): Promise<Row | null> {
+    return getRecordById(TABLE.pitches, id);
+}
+
+export async function listPitches(status?: string): Promise<Row[]> {
+    const rows = await listAll(
+        TABLE.pitches,
+        status ? { filterByFormula: `{status}='${esc(status)}'` } : {},
+    );
+    rows.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+    return rows;
+}
+
+export async function listPitchesBySub(sub: string): Promise<Row[]> {
+    const rows = await listAll(TABLE.pitches, { filterByFormula: `{user_sub}='${esc(sub)}'` });
+    rows.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+    return rows.map(pitchView);
+}
+
+/** The pitches a user may attach a project to. */
+export async function listApprovedPitchesBySub(sub: string): Promise<Row[]> {
+    const rows = await listAll(TABLE.pitches, {
+        filterByFormula: `AND({user_sub}='${esc(sub)}',{status}='approved')`,
+    });
+    return rows.map(pitchView);
+}
+
+export async function setPitchSlackRef(id: string, channel: string, ts: string): Promise<void> {
+    await updateRecord(TABLE.pitches, id, { slack_channel: channel, slack_ts: ts });
+}
+
+export async function approvePitch(id: string, reviewer?: string): Promise<void> {
+    await updateRecord(TABLE.pitches, id, {
+        status: "approved",
+        reviewed_by: reviewer ?? null,
+        reviewed_at: now(),
+    });
+}
+
+export async function rejectPitch(id: string, reviewer?: string): Promise<void> {
+    await updateRecord(TABLE.pitches, id, {
+        status: "rejected",
+        reviewed_by: reviewer ?? null,
+        reviewed_at: now(),
+    });
+}
+
+export async function requestPitchChanges(id: string, reviewer: string, feedback: string): Promise<void> {
+    await updateRecord(TABLE.pitches, id, {
+        status: "changes_requested",
+        review_feedback: feedback,
+        reviewed_by: reviewer,
+        reviewed_at: now(),
+    });
+}
+
+export async function resubmitPitch(
+    id: string,
+    patch: Partial<Pick<PitchInput, "title" | "description" | "why">>,
+): Promise<Row | null> {
+    return updateRecord(TABLE.pitches, id, {
+        ...patch,
+        status: "pending",
+        resubmitted_at: now(),
+    });
 }
 
 export async function listOrders(status?: string): Promise<Row[]> {

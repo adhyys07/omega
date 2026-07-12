@@ -110,27 +110,58 @@ export async function postReviewerMessage(
     });
 }
 
-    
-/** The review card. Action buttons render only while the submission is actionable. */
-function submissionBlocks(row: Row, state: SubmissionState, actor?: string): unknown[] {
+/** The two things reviewers act on. A pitch is the idea; a project is the build. */
+export type ReviewKind = 'project' | 'pitch';
+
+/** Button values carry `kind:id` so one interactivity endpoint can route both.
+ *  Cards posted before pitches existed carry a bare id — treat those as projects. */
+export function parseActionValue(value: string): { kind: ReviewKind; id: string } {
+    const i = value.indexOf(':');
+    if (i === -1) return { kind: 'project', id: value };
+    const kind = value.slice(0, i);
+    return { kind: kind === 'pitch' ? 'pitch' : 'project', id: value.slice(i + 1) };
+}
+
+/** The review card. Action buttons render only while the item is actionable. */
+function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, actor?: string): unknown[] {
+    const isPitch = kind === 'pitch';
+
     const blocks: unknown[] = [
-        { type: 'header', text: { type: 'plain_text', text: '🚀 Omega submission' } },
         {
-            type: 'section',
-            fields: [
-                { type: 'mrkdwn', text: `*Project:*\n${row.title ?? '—'}` },
-                { type: 'mrkdwn', text: `*By:*\n${`${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || '—'}` },
-                { type: 'mrkdwn', text: `*Code:*\n${row.code_url || '—'}` },
-                { type: 'mrkdwn', text: `*Playable:*\n${row.playable_url || '—'}` },
-            ],
+            type: 'header',
+            text: { type: 'plain_text', text: isPitch ? '💡 Omega pitch' : '🚀 Omega submission' },
         },
         {
             type: 'section',
-            text: { type: 'mrkdwn', text: `*Description:*\n${String(row.description ?? '').slice(0, 2900)}` },
+            fields: isPitch
+                ? [
+                    { type: 'mrkdwn', text: `*Idea:*\n${row.title ?? '—'}` },
+                    { type: 'mrkdwn', text: `*By:*\n${`${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || '—'}` },
+                ]
+                : [
+                    { type: 'mrkdwn', text: `*Project:*\n${row.title ?? '—'}` },
+                    { type: 'mrkdwn', text: `*By:*\n${`${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || '—'}` },
+                    { type: 'mrkdwn', text: `*Code:*\n${row.code_url || '—'}` },
+                    { type: 'mrkdwn', text: `*Playable:*\n${row.playable_url || '—'}` },
+                ],
+        },
+        {
+            type: 'section',
+            text: {
+                type: 'mrkdwn',
+                text: `*${isPitch ? 'What they\'re building' : 'Description'}:*\n${String(row.description ?? '').slice(0, 2900)}`,
+            },
         },
     ];
 
-    if (row.demo_video_url) {
+    if (isPitch && row.why) {
+        blocks.push({
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*How it helps people:*\n${String(row.why).slice(0, 2900)}` },
+        });
+    }
+
+    if (!isPitch && row.demo_video_url) {
         blocks.push({
             type: 'section',
             text: { type: 'mrkdwn', text: `*Demo video:*\n${row.demo_video_url}` },
@@ -138,13 +169,14 @@ function submissionBlocks(row: Row, state: SubmissionState, actor?: string): unk
     }
 
     if (state === 'pending') {
+        const value = `${kind}:${row.id}`;
         blocks.push({
             type: 'actions',
-            block_id: `submission:${row.id}`,
+            block_id: `${kind}:${row.id}`,
             elements: [
-                { type: 'button', style: 'primary', text: { type: 'plain_text', text: '✅ Approve' }, value: String(row.id), action_id: 'approve_submission' },
-                { type: 'button', text: { type: 'plain_text', text: '✏️ Request changes' }, value: String(row.id), action_id: 'request_changes' },
-                { type: 'button', style: 'danger', text: { type: 'plain_text', text: '❌ Reject' }, value: String(row.id), action_id: 'reject_submission' },
+                { type: 'button', style: 'primary', text: { type: 'plain_text', text: '✅ Approve' }, value, action_id: 'approve_submission' },
+                { type: 'button', text: { type: 'plain_text', text: '✏️ Request changes' }, value, action_id: 'request_changes' },
+                { type: 'button', style: 'danger', text: { type: 'plain_text', text: '❌ Reject' }, value, action_id: 'reject_submission' },
             ],
         });
     } else {
@@ -156,23 +188,34 @@ function submissionBlocks(row: Row, state: SubmissionState, actor?: string): unk
     return blocks;
 }
 
-/** Posts the review card as a new top-level message. Returns the coordinates
+/** Posts a review card as a new top-level message. Returns the coordinates
  *  needed to edit it or reply in its thread later, or null if Slack is unconfigured. */
-export async function notifySlackOfNewSubmission(
+export async function notifySlackOfNewReview(
+    kind: ReviewKind,
     user: HcUser,
     row: Row,
 ): Promise<{ channel: string; ts: string } | null> {
     if (!SLACK_TOKEN || !REVIEW_CHANNEL) return null;
+    const label = kind === 'pitch' ? 'pitch' : 'submission';
     const data = await slack<{ channel: string; ts: string }>('chat.postMessage', {
         channel: REVIEW_CHANNEL,
-        text: `New Omega submission by ${user.name ?? user.sub}`,
-        blocks: submissionBlocks(row, 'pending'),
+        text: `New Omega ${label} by ${user.name ?? user.sub}`,
+        blocks: reviewBlocks(kind, row, 'pending'),
     });
     return { channel: data.channel, ts: data.ts };
 }
 
+/** Back-compat wrapper — project submissions. */
+export async function notifySlackOfNewSubmission(
+    user: HcUser,
+    row: Row,
+): Promise<{ channel: string; ts: string } | null> {
+    return notifySlackOfNewReview('project', user, row);
+}
+
 /** Rewrites an existing review card in place to reflect a new state. */
-export async function updateSubmissionCard(
+export async function updateReviewCard(
+    kind: ReviewKind,
     channel: string,
     ts: string,
     row: Row,
@@ -183,9 +226,20 @@ export async function updateSubmissionCard(
     await slack('chat.update', {
         channel,
         ts,
-        text: `Submission ${state}`,
-        blocks: submissionBlocks(row, state, actor),
+        text: `${kind === 'pitch' ? 'Pitch' : 'Submission'} ${state}`,
+        blocks: reviewBlocks(kind, row, state, actor),
     });
+}
+
+/** Back-compat wrapper — project submissions. */
+export async function updateSubmissionCard(
+    channel: string,
+    ts: string,
+    row: Row,
+    state: SubmissionState,
+    actor?: string,
+): Promise<void> {
+    return updateReviewCard('project', channel, ts, row, state, actor);
 }
 
 /** Replies in the review message's thread. */
@@ -204,10 +258,20 @@ export function editLink(submissionId: string): string {
     return `${FRONTEND_URL}/submit?edit=${encodeURIComponent(submissionId)}`;
 }
 
+export function pitchEditLink(pitchId: string): string {
+    return `${FRONTEND_URL}/pitch?edit=${encodeURIComponent(pitchId)}`;
+}
+
+/** Where the frontend lives — used to link builders back into the app. */
+export function frontendUrl(): string {
+    return FRONTEND_URL;
+}
+
 /** Opens the "request changes" feedback modal. trigger_id is valid for ~3s, so
  *  this must be called before acking the interaction, not after. */
 export async function openChangesModal(
     triggerId: string,
+    kind: ReviewKind,
     submissionId: string,
     channel: string,
     ts: string,
@@ -218,7 +282,7 @@ export async function openChangesModal(
         view: {
             type: 'modal',
             callback_id: 'request_changes_modal',
-            private_metadata: JSON.stringify({ id: submissionId, channel, ts }),
+            private_metadata: JSON.stringify({ kind, id: submissionId, channel, ts }),
             title: { type: 'plain_text', text: 'Request changes' },
             submit: { type: 'plain_text', text: 'Send' },
             close: { type: 'plain_text', text: 'Cancel' },

@@ -9,10 +9,28 @@
     last_name: string | null
     code_url: string | null
     hackatime_hours: number | null
+    description?: string | null
+    why?: string | null
     hasThread: boolean
     created_at: string | null
+    /** Reviewer-only duplicate-idea verdict. Never sent to the pitch's author. */
+    duplicate_check?: {
+      checkedAt: string
+      matches: { id: string; title: string; score: number; reason: string }[]
+    } | null
   }
   type Msg = { ts: string; author: string; text: string; isBot: boolean; isParent: boolean }
+
+  // Pitches (the idea) and projects (the build) are reviewed the same way but
+  // live in different tables, so the endpoints differ by kind.
+  type Kind = 'projects' | 'pitches'
+  let kind = $state<Kind>('pitches')
+
+  const listUrl = (k: Kind) => (k === 'pitches' ? '/api/review/pitches' : '/api/review/submissions')
+  const threadUrl = (k: Kind, id: string) =>
+    k === 'pitches' ? `/api/review/pitches/${id}/thread` : `/api/review/${id}/thread`
+  const messageUrl = (k: Kind, id: string) =>
+    k === 'pitches' ? `/api/review/pitches/${id}/message` : `/api/review/${id}/message`
 
   let subs = $state<Sub[]>([])
   let loading = $state(true)
@@ -33,17 +51,29 @@
   }
   const STATUS_LABEL: Record<string, string> = { changes_requested: 'changes req.' }
 
-  onMount(async () => {
+  onMount(() => { load() })
+
+  async function load() {
+    loading = true
+    listErr = ''
+    selected = null
+    messages = []
     try {
-      const r = await fetch('/api/review/submissions')
+      const r = await fetch(listUrl(kind))
       if (!r.ok) throw new Error()
       subs = await r.json()
     } catch {
-      listErr = "Couldn't load submissions. Is the server running?"
+      listErr = `Couldn't load ${kind}. Is the server running?`
     } finally {
       loading = false
     }
-  })
+  }
+
+  function switchKind(k: Kind) {
+    if (k === kind) return
+    kind = k
+    load()
+  }
 
   async function open(s: Sub) {
     selected = s
@@ -52,7 +82,7 @@
     if (!s.hasThread) return
     loadingThread = true
     try {
-      const r = await fetch(`/api/review/${s.id}/thread`)
+      const r = await fetch(threadUrl(kind, s.id))
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Could not load the thread')
       const data = await r.json()
       messages = data.messages ?? []
@@ -69,7 +99,7 @@
     sending = true
     err = ''
     try {
-      const r = await fetch(`/api/review/${selected.id}/message`, {
+      const r = await fetch(messageUrl(kind, selected.id), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, dmSubmitter }),
@@ -92,12 +122,28 @@
     'background:#fbf4e6; border:2.5px solid #1c1714; border-radius:16px 11px 15px 12px/12px 15px 11px 16px; box-shadow:5px 5px 0 rgba(28,23,20,.13);'
 </script>
 
+<div style="display:flex; gap:8px; margin-bottom:20px;">
+  {#each [{ k: 'pitches', label: '💡 Pitches' }, { k: 'projects', label: '🚀 Projects' }] as t}
+    <button
+      onclick={() => switchKind(t.k as Kind)}
+      style="
+        padding:8px 16px; border:2px solid #1c1714; cursor:pointer;
+        border-radius:10px 14px 9px 13px/13px 9px 14px 10px;
+        font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.82rem;
+        box-shadow:2px 2px 0 rgba(28,23,20,.18);
+        background:{kind === t.k ? 'var(--orange)' : '#fbf4e6'};
+        color:{kind === t.k ? '#fff' : '#1c1714'};
+      "
+    >{t.label}</button>
+  {/each}
+</div>
+
 {#if loading}
   <p style="color:#5b4f44;">Loading…</p>
 {:else if listErr}
   <p style="color:#c2451a; font-weight:700;">{listErr}</p>
 {:else if !subs.length}
-  <p style="color:#5b4f44;">No submissions yet.</p>
+  <p style="color:#5b4f44;">No {kind} yet.</p>
 {:else}
   <div class="review-grid">
     <!-- queue -->
@@ -124,6 +170,9 @@
                 {STATUS_LABEL[s.status] ?? s.status}
               </span>
               <span style="font-size:.72rem; color:#5b4f44;">{who(s)}</span>
+              {#if s.duplicate_check?.matches?.length}
+                <span title="Possible duplicate idea — open to see the matches" style="font-size:.72rem; color:#b07410; font-weight:700;">🤖 dupe?</span>
+              {/if}
               {#if !s.hasThread}
                 <span title="No Slack thread — predates the integration, or the card failed to post" style="font-size:.72rem; color:#b07410;">⚠ no thread</span>
               {/if}
@@ -148,6 +197,39 @@
             {/if}
           </div>
         </div>
+
+        {#if kind === 'pitches' && selected.duplicate_check?.matches?.length}
+          <div style="margin:14px 16px 0; padding:12px 14px; background:rgba(255,179,71,.16); border:2px solid #b07410; border-radius:11px 8px 12px 9px/9px 12px 8px 11px; font-family:'Space Grotesk',sans-serif;">
+            <div style="font-weight:700; color:#b07410; font-size:.8rem; margin-bottom:6px;">
+              🤖 Possible duplicate idea — reviewers only
+            </div>
+            {#each selected.duplicate_check.matches as m (m.id)}
+              <div style="font-size:.8rem; color:#1c1714; line-height:1.5; margin-bottom:3px;">
+                • <strong>{m.title}</strong> ({Math.round(m.score * 100)}% match) — {m.reason}
+              </div>
+            {/each}
+            <div style="font-size:.7rem; color:#5b4f44; margin-top:6px;">
+              Automated check. The builder never sees this — use your judgment.
+            </div>
+          </div>
+        {/if}
+
+        {#if kind === 'pitches' && (selected.description || selected.why)}
+          <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28); font-family:'Space Grotesk',sans-serif; display:flex; flex-direction:column; gap:10px;">
+            {#if selected.description}
+              <div>
+                <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--orange);">What they're building</div>
+                <div style="font-size:.85rem; color:#1c1714; white-space:pre-wrap; line-height:1.5; margin-top:3px;">{selected.description}</div>
+              </div>
+            {/if}
+            {#if selected.why}
+              <div>
+                <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--orange);">How it helps people</div>
+                <div style="font-size:.85rem; color:#1c1714; white-space:pre-wrap; line-height:1.5; margin-top:3px;">{selected.why}</div>
+              </div>
+            {/if}
+          </div>
+        {/if}
 
         {#if !selected.hasThread}
           <p style="padding:20px; color:#5b4f44; font-family:'Space Grotesk',sans-serif; font-size:.85rem;">
