@@ -13,12 +13,25 @@
     why?: string | null
     hasThread: boolean
     created_at: string | null
+    badges?: string[]
     /** Reviewer-only duplicate-idea verdict. Never sent to the pitch's author. */
     duplicate_check?: {
       checkedAt: string
       matches: { id: string; title: string; score: number; reason: string }[]
     } | null
   }
+
+  type Badge = { slug: string; label: string; icon: string; criteria: string; bg: string; color: string }
+
+  let catalog = $state<Badge[]>([])
+  let awarded = $state<Set<string>>(new Set())
+  let savingBadges = $state(false)
+  let badgeMsg = $state('')
+  let acting = $state(false)
+  let showFeedBack = $state(false)
+  let feedback = $state('')
+  let actionMsg = $state('')
+  let actionErr = $state('')
   type Msg = { ts: string; author: string; text: string; isBot: boolean; isParent: boolean }
 
   // Pitches (the idea) and projects (the build) are reviewed the same way but
@@ -31,6 +44,8 @@
     k === 'pitches' ? `/api/review/pitches/${id}/thread` : `/api/review/${id}/thread`
   const messageUrl = (k: Kind, id: string) =>
     k === 'pitches' ? `/api/review/pitches/${id}/message` : `/api/review/${id}/message`
+  const actionUrl = (k: Kind, id: string) =>
+    k === 'pitches' ? `/api/review/pitches/${id}/action` : `/api/review/${id}/action`
 
   let subs = $state<Sub[]>([])
   let loading = $state(true)
@@ -51,7 +66,46 @@
   }
   const STATUS_LABEL: Record<string, string> = { changes_requested: 'changes req.' }
 
-  onMount(() => { load() })
+  onMount(async () => {
+    load()
+    try {
+      const r = await fetch('/api/review/badges')
+      if (r.ok) catalog = await r.json()
+    } catch {
+      // non-fatal: the chips just don't render
+    }
+  })
+
+  function toggleBadge(slug: string) {
+    const next = new Set(awarded)
+    if (next.has(slug)) next.delete(slug)
+    else next.add(slug)
+    awarded = next   // reassign — Svelte 5 does not track Set mutation
+  }
+
+  async function saveBadges() {
+    if (!selected) return
+    savingBadges = true
+    badgeMsg = ''
+    try {
+      const r = await fetch(`/api/review/${selected.id}/badges`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ badges: [...awarded] }),
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Save failed')
+      const saved = [...awarded]
+      selected.badges = saved
+      // keep the queue list in sync so the row's chips update too
+      const inList = subs.find((s) => s.id === selected!.id)
+      if (inList) inList.badges = saved
+      badgeMsg = 'Saved ✓'
+    } catch (e) {
+      badgeMsg = e instanceof Error ? e.message : 'Save failed'
+    } finally {
+      savingBadges = false
+    }
+  }
 
   async function load() {
     loading = true
@@ -79,6 +133,12 @@
     selected = s
     messages = []
     err = ''
+    badgeMsg = ''
+    actionMsg = ''
+    actionErr = ''
+    showFeedBack = false
+    feedback = ''
+    awarded = new Set(s.badges ?? [])   // pre-toggle chips to what's already awarded
     if (!s.hasThread) return
     loadingThread = true
     try {
@@ -93,6 +153,46 @@
     }
   }
 
+  async function act(action: 'approve' | 'reject' | 'request_changes') {
+    if (!selected) return
+    actionErr = ''
+    actionMsg = ''
+
+    // Request-changes is two-click: reveal the box, then send. Feedback is
+    // mandatory — the server rejects an empty one too.
+    if (action === 'request_changes' && !showFeedBack) {
+      showFeedBack = true
+      return
+    }
+    if (action === 'request_changes' && !feedback.trim()) {
+      actionErr = 'Please provide feedback for the submitter.'
+      return
+    }
+
+    acting = true
+    try {
+      const r = await fetch(actionUrl(kind, selected.id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, feedback: feedback.trim() }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.error ?? 'Action failed')
+      selected.status = data.status
+      const inList = subs.find((s) => s.id === selected!.id)
+      if (inList) inList.status = data.status
+      feedback = ''
+      showFeedBack = false
+      const msg = `Marked ${data.status.replace('_', ' ')} ✓`
+      // open() resets actionMsg, so re-set it after refreshing the thread.
+      if (selected.hasThread) await open(selected)
+      actionMsg = msg
+    } catch (e) {
+      actionErr = e instanceof Error ? e.message : 'Action failed'
+    } finally {
+      acting = false
+    }
+  }
   async function send() {
     const text = draft.trim()
     if (!text || !selected) return
@@ -197,6 +297,97 @@
             {/if}
           </div>
         </div>
+
+        {#if selected.status === 'pending' || selected.status === 'changes_requested'}
+          <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28);">
+            <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--orange); margin-bottom:8px;">
+              ⚖ Decision
+            </div>
+
+            {#if showFeedBack}
+              <textarea
+                bind:value={feedback}
+                placeholder="What needs to change? This is sent to the builder verbatim."
+                rows="3"
+                style="width:100%; box-sizing:border-box; padding:11px 13px; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.85rem; background:#fbf4e6; color:#1c1714; outline:none; box-shadow:3px 3px 0 #1c1714; resize:vertical; margin-bottom:10px;"
+              ></textarea>
+            {/if}
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              <button
+                onclick={() => act('approve')}
+                disabled={acting}
+                style="background:#3d7a40; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
+              >✅ Approve</button>
+
+              <button
+                onclick={() => act('request_changes')}
+                disabled={acting}
+                style="background:#2f6db0; color:#fff; border:2.5px solid #1c1714; border-radius:7px 10px 6px 11px/11px 6px 10px 7px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
+              >{showFeedBack ? 'Send changes' : '✏️ Request changes'}</button>
+
+              <button
+                onclick={() => act('reject')}
+                disabled={acting}
+                style="background:#b3261e; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
+              >❌ Reject</button>
+
+              {#if showFeedBack}
+                <button
+                  onclick={() => { showFeedBack = false; feedback = ''; actionMsg = ''; actionErr = '' }}
+                  style="background:transparent; color:#5b4f44; border:2px solid #1c1714; border-radius:8px; padding:9px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.78rem; cursor:pointer;"
+                >Cancel</button>
+              {/if}
+
+              {#if actionErr}
+                <span style="font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#b3261e;">{actionErr}</span>
+              {:else if actionMsg}
+                <span style="font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:{actionMsg.includes('✓') ? '#3d7a40' : '#b3261e'};">{actionMsg}</span>
+              {/if}
+            </div>
+          </div>
+        {:else}
+          <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28); font-family:'Space Grotesk',sans-serif; font-size:.82rem; color:#5b4f44;">
+            Decided: <strong>{STATUS_LABEL[selected.status] ?? selected.status}</strong>
+          </div>
+        {/if}
+
+        {#if kind === 'projects' && catalog.length}
+          <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28);">
+            <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--orange); margin-bottom:8px;">
+              🏅 Badges — click to toggle, then save
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              {#each catalog as b (b.slug)}
+                {@const on = awarded.has(b.slug)}
+                <button
+                  onclick={() => toggleBadge(b.slug)}
+                  title={b.criteria}
+                  style="
+                    display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+                    padding:7px 12px; border:2px solid #1c1714;
+                    border-radius:9px 6px 10px 5px/5px 10px 6px 9px;
+                    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.76rem;
+                    background:{on ? b.bg : 'transparent'};
+                    color:{on ? b.color : '#9c8a6e'};
+                    box-shadow:{on ? '2px 2px 0 rgba(28,23,20,.2)' : 'none'};
+                    opacity:{on ? '1' : '.55'};
+                  "
+                >{b.icon} {b.label}</button>
+              {/each}
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+              <button
+                onclick={saveBadges}
+                disabled={savingBadges}
+                style="background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:8px 16px; font-family:'Syne',sans-serif; font-weight:800; font-size:.78rem; cursor:{savingBadges ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{savingBadges ? '.6' : '1'};"
+              >{savingBadges ? 'Saving…' : 'Save badges'}</button>
+              {#if badgeMsg}
+                <span style="font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:{badgeMsg === 'Saved ✓' ? '#3d7a40' : '#b3261e'};">{badgeMsg}</span>
+              {/if}
+            </div>
+          </div>
+        {/if}
 
         {#if kind === 'pitches' && selected.duplicate_check?.matches?.length}
           <div style="margin:14px 16px 0; padding:12px 14px; background:rgba(255,179,71,.16); border:2px solid #b07410; border-radius:11px 8px 12px 9px/9px 12px 8px 11px; font-family:'Space Grotesk',sans-serif;">

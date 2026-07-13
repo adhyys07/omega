@@ -42,7 +42,18 @@
     hackatime_project: string | null
     hackatime_start_date: string | null
     review_feedback: string | null
+    badges: string[]
     created_at: string
+  }
+
+  // Presentation only — the server whitelists which slugs can ever be awarded.
+  const BADGE_META: Record<string, { icon: string; label: string; bg: string; color: string }> = {
+    android_builder:    { icon: '▲', label: 'Android Builder',    bg: 'rgba(74,150,80,.16)',  color: '#3d7a40' },
+    ios_shipper:        { icon: '◉', label: 'iOS Shipper',        bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
+    gemini_integration: { icon: '✦', label: 'Gemini Integration', bg: 'rgba(47,109,176,.16)', color: '#2f6db0' },
+    cider_crossover:    { icon: '▣', label: 'Cider Crossover',    bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
+    dual_platform:      { icon: '◆', label: 'Dual Platform',      bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
+    elite_tier:         { icon: '⚡', label: 'Elite Tier',         bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
   }
 
   let projects = $state<HtProject[]>([])
@@ -459,6 +470,18 @@
                         </div>
                         {#if s.hackatime_project}
                           <div style="color:#5b4f44; font-size:.72rem;">⏱ {s.hackatime_project}</div>
+                        {/if}
+                        {#if s.badges?.length}
+                          <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+                            {#each s.badges as slug (slug)}
+                              {#if BADGE_META[slug]}
+                                <span
+                                  title={BADGE_META[slug].label}
+                                  style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border:1.5px solid #1c1714; border-radius:6px; font-size:.62rem; font-weight:700; background:{BADGE_META[slug].bg}; color:{BADGE_META[slug].color};"
+                                >{BADGE_META[slug].icon} {BADGE_META[slug].label}</span>
+                              {/if}
+                            {/each}
+                          </div>
                         {/if}
                       </td>
                       <td style="padding:11px 10px 11px 0;">

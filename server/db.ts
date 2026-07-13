@@ -501,6 +501,7 @@ export async function listSubmissionsBySub(sub: string): Promise<Row[]> {
         description: r.description ?? null,
         screenshot_url: r.screenshot_url ?? null,
         demo_video_url: r.demo_video_url ?? null,
+        badges: Array.isArray(r.badges) ? r.badges : [],
         created_at: r.created_at ?? null,
     }));
 }
@@ -608,6 +609,16 @@ function pitchView(r: Row): Row {
 /** Stores the reviewer-only duplicate-idea verdict as JSON. */
 export async function setPitchDuplicateCheck(id: string, check: unknown): Promise<void> {
     await updateRecord(TABLE.pitches, id, { duplicate_check: JSON.stringify(check) });
+}
+
+export async function setSubmissionBadges(
+    id: string, slugs: string[], reviewer?: string,
+): Promise<Row | null> {
+    return updateRecord(TABLE.projectSubmissions, id, {
+        badges: slugs,
+        badges_awarded_by: reviewer ?? null,
+        badges_awarded_at: now(),
+    });
 }
 
 export async function createPitch(input: PitchInput): Promise<Row> {
