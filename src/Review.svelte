@@ -8,6 +8,8 @@
     first_name: string | null
     last_name: string | null
     code_url: string | null
+    playable_url?: string | null
+    demo_video_url?: string | null
     hackatime_hours: number | null
     description?: string | null
     why?: string | null
@@ -20,6 +22,22 @@
       matches: { id: string; title: string; score: number; reason: string }[]
     } | null
   }
+
+  type Readme = { found: boolean; content: string; chars: number; htmlUrl: string | null; path: string | null }
+  
+  type GhCheck = {
+    host: string
+    repo: { owner: string, name: string } | null
+    exists: boolean
+    isPublic: boolean
+    readme: { found: boolean; chars: number; tooSmall: boolean; htmlUrl: string | null } | null
+    error?: string
+  }
+
+  let gh = $state<{ check: GhCheck | null; readme: Readme | null } | null>(null)
+
+  let loadingGh = $state(false)
+  let showReadme = $state(false)
 
   type Badge = { slug: string; label: string; icon: string; criteria: string; bg: string; color: string }
 
@@ -93,6 +111,16 @@
     withdrawn: 'background:rgba(28,23,20,.10); color:#5b4f44;',
   }
   const STATUS_LABEL: Record<string, string> = { changes_requested: 'changes req.' }
+
+  /** Shared look for the repo / demo / video / readme row. */
+  const btn = `
+    display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+    padding:6px 13px; border:2px solid #1c1714;
+    border-radius:9px 12px 8px 11px/11px 8px 12px 9px;
+    background:#fbf4e6; color:#1c1714; text-decoration:none;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.78rem;
+    box-shadow:2px 2px 0 rgba(28,23,20,.18);
+  `
 
   /** "14 Jul 2026, 18:42" — absolute, because a reviewer comparing a pitch to the
    *  project built from it cares about the real dates, not "3 days ago". */
@@ -202,6 +230,7 @@
     awarded = new Set(s.badges ?? [])   // pre-toggle chips to what's already awarded
 
     loadCounterpart(kind, s.id)   // independent of the thread; don't await
+    loadGithub(s.id)              // no-ops for pitches, which have no repo
 
     if (!s.hasThread) return
     loadingThread = true
@@ -235,6 +264,24 @@
       if (selected?.id === id) linkedReason = 'error'
     } finally {
       if (selected?.id === id) loadingLink = false
+    }
+  }
+
+  async function loadGithub(id: string) {
+    gh = null
+    showReadme = false
+    if (kind != 'projects') return
+    loadingGh = true
+    try {
+      const r = await fetch(`/api/review/${id}/github`)
+      if (!r.ok) throw new Error('lookup failed')
+      const data = await r.json()
+      if (selected?.id !== id) return        // stale response — user moved on
+      gh = data
+    } catch {
+      if (selected?.id === id) gh = null
+    } finally {
+      if (selected?.id === id) loadingGh = false
     }
   }
 
@@ -381,11 +428,69 @@
             {who(selected)}
             {#if selected.created_at} · <span title="Submitted">🕘 {fmtDate(selected.created_at)}</span>{/if}
             {#if selected.hackatime_hours} · {selected.hackatime_hours}h{/if}
-            {#if selected.code_url}
-              · <a href={selected.code_url} target="_blank" rel="noopener" style="color:#c2451a; font-weight:700; text-decoration:none;">code ↗</a>
-            {/if}
           </div>
         </div>
+
+        <!-- everything a reviewer needs to open, one click away -->
+        {#if kind === 'projects'}
+          <div style="padding:12px 16px; border-bottom:2px dashed rgba(28,23,20,.28); display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            {#if selected.code_url}
+              <a href={selected.code_url} target="_blank" rel="noopener" style={btn}>⌥ Repo</a>
+            {/if}
+            {#if selected.playable_url}
+              <a href={selected.playable_url} target="_blank" rel="noopener" style={btn}>▶ Demo</a>
+            {/if}
+            {#if selected.demo_video_url}
+              <a href={selected.demo_video_url} target="_blank" rel="noopener" style={btn}>🎬 Video</a>
+            {/if}
+
+            <button
+              onclick={() => (showReadme = !showReadme)}
+              disabled={!gh?.readme?.found}
+              style="{btn} opacity:{gh?.readme?.found ? 1 : 0.45}; cursor:{gh?.readme?.found ? 'pointer' : 'not-allowed'};"
+            >
+              📄 README{#if gh?.readme?.found} · {gh.readme.chars} chars{/if}
+            </button>
+
+            {#if loadingGh}
+              <span style="font-size:.76rem; color:#5b4f44;">checking GitHub…</span>
+            {:else if gh?.check}
+              <!-- `error` means the CHECK failed (rate limit, network) — not that the
+                   repo is bad. Never render that as an accusation against the builder. -->
+              {#if gh.check.error}
+                <span style="font-size:.76rem; color:#b07410;">⚠ {gh.check.error}</span>
+              {:else if gh.check.host !== 'github'}
+                <span style="font-size:.76rem; color:#5b4f44;">not a GitHub repo — check manually</span>
+              {:else if !gh.check.exists}
+                <span style="font-size:.76rem; color:#b3261e; font-weight:700;">⚠ repo not found</span>
+              {:else if !gh.check.isPublic}
+                <span style="font-size:.76rem; color:#b3261e; font-weight:700;">🔒 repo is PRIVATE</span>
+              {:else if gh.check.readme?.tooSmall}
+                <span style="font-size:.76rem; color:#b07410; font-weight:700;">⚠ README is thin ({gh.check.readme.chars} chars)</span>
+              {:else if gh.check.readme?.found}
+                <span style="font-size:.76rem; color:#3d7a40; font-weight:700;">✓ public · README looks fine</span>
+              {:else}
+                <span style="font-size:.76rem; color:#b07410; font-weight:700;">⚠ no README</span>
+              {/if}
+            {/if}
+          </div>
+
+          {#if showReadme && gh?.readme?.found}
+            <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28); background:rgba(28,23,20,.03);">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px;">
+                <span style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem;">{gh.readme.path}</span>
+                {#if gh.readme.htmlUrl}
+                  <a href={gh.readme.htmlUrl} target="_blank" rel="noopener" style="font-size:.76rem; color:#c2451a; font-weight:700; text-decoration:none; white-space:nowrap;">open on GitHub ↗</a>
+                {/if}
+              </div>
+              <!-- Rendered as TEXT on purpose. A README is attacker-controlled content
+                   from an untrusted submitter; running it through a markdown->HTML
+                   renderer here would be stored XSS aimed straight at an admin session.
+                   Svelte escapes interpolation, so this stays inert. Do not use {@html}. -->
+              <pre style="margin:0; max-height:340px; overflow:auto; white-space:pre-wrap; word-break:break-word; font-family:ui-monospace,monospace; font-size:.78rem; line-height:1.5; color:#1c1714;">{gh.readme.content}</pre>
+            </div>
+          {/if}
+        {/if}
 
         <!-- lineage: the other half of this idea's life -->
         <div style="padding:12px 16px; border-bottom:2px dashed rgba(28,23,20,.28); background:rgba(47,109,176,.05);">

@@ -14,10 +14,19 @@ import {
     mention,
 } from "./slack.ts";
 import { BADGES, sanitizeBadges, hydrate } from "./badges.ts";
+import { checkGithubRepo, fetchReadme } from "./github-api.ts";
 /** Stored as a JSON string in Airtable; a malformed value must not break the panel. */
 
 
 type ReviewAction = 'approve' | 'reject' | 'request_changes';
+type GithubPayload = {
+    check: Awaited<ReturnType<typeof checkGithubRepo>>;
+    // null when the repo is private, missing, or simply has no README — all normal
+    // outcomes a reviewer needs to see, not errors.
+    readme: Awaited<ReturnType<typeof fetchReadme>> | null;
+}
+const ghCache = new Map<string, { at: number; data: GithubPayload }>();
+const GH_TTL_MS = 5*60*1000;  // 5 minutes
 
 const ACTION_STATE: Record<ReviewAction, SubmissionState> = {
     approve: 'approved',
@@ -172,6 +181,9 @@ export default async function reviewRoutes(app: FastifyInstance) {
             title: r.title ?? null,
             status: r.status,
             code_url: r.code_url ?? null,
+            demo_video_url: r.demo_video_url ?? null,
+            description: r.description ?? null,
+            playable_url: r.playable_url ?? null,
             first_name: r.first_name ?? null,
             last_name: r.last_name ?? null,
             hackatime_hours: r.hackatime_hours ?? null,
@@ -268,6 +280,33 @@ export default async function reviewRoutes(app: FastifyInstance) {
             return reply.code(502).send({ error: 'Failed to fetch Slack thread' });
         }
     });
+
+    app.get('/api/review/:id/github', { preHandler: requireRole('reviewer') }, async (req, reply) => {
+        const { id } = req.params as { id: string };
+        const row = await getSubmissionById(id);
+        if (!row) return reply.status(404).send({ error: 'Submission not found' });
+        const url = String(row.code_url ?? '').trim();
+
+        if(!url) return { check: null, readme: null, reason: 'no_code_url' };
+
+        const hit = ghCache.get(url);
+        if (hit && Date.now() - hit.at < GH_TTL_MS) {
+            return hit.data;
+        }
+
+        try {
+            const check = await checkGithubRepo(url);
+            const readme = check.readme?.found ? await fetchReadme(url) : null;
+            const data: GithubPayload = { check, readme };
+            ghCache.set(url, { at: Date.now(), data });
+            return data;
+        } catch (err) {
+            req.log.error(err, 'GitHub API fetch failed');
+            return { check: null, readme: null, reason: 'error' };
+        }
+    });
+
+
 
     app.post('/api/review/pitches/:id/message', { preHandler: requireRole('reviewer') }, async (req, reply) => {
         const user = getSessionUser(req)!;
