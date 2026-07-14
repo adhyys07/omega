@@ -8,7 +8,8 @@ import {
 } from "./db.ts";
 import {
     fetchThreadReplies, postReviewerMessage, dmUser, postInThread, updateReviewCard,
-    editLink, pitchEditLink, frontendUrl, type ReviewKind, type SubmissionState,
+    editLink, pitchEditLink, frontendUrl, postBuilderControls,
+    type ReviewKind, type SubmissionState,
 } from "./slack.ts";
 import { BADGES, sanitizeBadges, hydrate } from "./badges.ts";
 /** Stored as a JSON string in Airtable; a malformed value must not break the panel. */
@@ -77,6 +78,18 @@ async function applyReviewAction(
 
             const slackId = await getSlackIdForSub(String(row.user_sub));
             if (!slackId) return;
+
+            // Changes requested is the one state where the builder has something to do,
+            // so re-post their controls (reship / withdraw) into the thread. Ephemeral,
+            // so nobody else in the channel sees a withdraw button on someone's project.
+            if (action === 'request_changes' && ch && ts) {
+                await postBuilderControls(
+                    kind,
+                    { ...row, slack_channel: ch, slack_ts: ts },
+                    'changes_requested',
+                    slackId,
+                );
+            }
 
             const label = isPitch ? 'pitch' : 'submission';
             let dm: string;

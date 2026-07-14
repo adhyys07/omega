@@ -528,6 +528,18 @@ export async function rejectSubmission(id: string, reviewer?: string): Promise<v
     });
 }
 
+export async function withdrawSubmission(id: string): Promise<void> {
+    await updateRecord(TABLE.projectSubmissions, id, {
+        status: "withdrawn", reviewed_at: now(),
+    });
+}
+
+export async function withdrawPitch(id: string): Promise<void> {
+    await updateRecord(TABLE.pitches, id, {
+        status: "withdrawn", reviewed_at: now(),
+    });
+}
+
 export async function approveSubmission(id: string, reviewer?: string): Promise<Row | null> {
     const s = await getSubmissionById(id);
     if (!s) return null;

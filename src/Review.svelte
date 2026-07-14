@@ -90,6 +90,7 @@
     rejected: 'background:rgba(179,38,30,.14); color:#b3261e;',
     pending: 'background:rgba(255,179,71,.22); color:#b07410;',
     changes_requested: 'background:rgba(47,109,176,.14); color:#2f6db0;',
+    withdrawn: 'background:rgba(28,23,20,.10); color:#5b4f44;',
   }
   const STATUS_LABEL: Record<string, string> = { changes_requested: 'changes req.' }
 

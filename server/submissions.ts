@@ -5,13 +5,17 @@ import {
   getSubmissionById, setSubmissionSlackRef, requestSubmissionChanges,
   resubmitSubmission, getSlackIdForSub, type SubmissionInput,
   getPitchById, approvePitch, rejectPitch, requestPitchChanges, listApprovedPitchesBySub,
+  withdrawSubmission, withdrawPitch,
 } from './db.ts';
 import {
   notifySlackOfNewSubmission, verifySlackSignature, isReviewer, updateSubmissionCard,
   updateReviewCard, postInThread, dmUser, openChangesModal, editLink, pitchEditLink,
-  parseActionValue, frontendUrl, type ReviewKind,
+  parseActionValue, frontendUrl, postBuilderControls, respondEphemeral, type ReviewKind,
 } from "./slack.ts";
 import { checkGithubRepo } from "./github-api.ts";
+
+/** Actions the BUILDER owns. Everything else on a card is a reviewer action. */
+const BUILDER_ACTIONS = new Set(['builder_withdraw', 'builder_reship']);
 
 export default async function submissionRoutes(app: FastifyInstance) {
     app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (req, body, done) => {
@@ -69,9 +73,26 @@ export default async function submissionRoutes(app: FastifyInstance) {
 
         try {
             const row = await createSubmission({ ...(b as SubmissionInput), user_sub: user.sub });
-            // Post the review card, then persist where it landed so later events can edit it.
+            // Post the review card, persist where it landed so later events can edit it,
+            // then drop the builder's own controls into the thread — ephemeral, so only
+            // they see them. The row from createSubmission predates the Slack ref, so
+            // hand postBuilderControls the ref explicitly.
             notifySlackOfNewSubmission(user, row)
-                .then((ref) => ref && setSubmissionSlackRef(row.id, ref.channel, ref.ts))
+                .then(async (ref) => {
+                    if (!ref) return;
+                    await setSubmissionSlackRef(row.id, ref.channel, ref.ts);
+                    const slackId = await getSlackIdForSub(user.sub);
+                    if (!slackId) {
+                        req.log.info({ sub: user.sub }, "no slack_id — builder gets no thread controls");
+                        return;
+                    }
+                    await postBuilderControls(
+                        "project",
+                        { ...row, slack_channel: ref.channel, slack_ts: ref.ts },
+                        "pending",
+                        slackId,
+                    );
+                })
                 .catch((err: unknown) => req.log.error(err, "slack notify failed"));
             return reply.code(201).send({ ok: true, id: row.id });
         } catch (err) {
@@ -183,6 +204,64 @@ export default async function submissionRoutes(app: FastifyInstance) {
         // Buttons carry `kind:id`; cards posted before pitches existed carry a bare id.
         const { kind, id } = parseActionValue(String(action.value));
         const isPitch = kind === "pitch";
+
+        // --- builder controls -------------------------------------------------
+        // These live in an ephemeral message only the builder can see. But visibility
+        // is NOT the gate: Slack ephemerals are best-effort UX, and we must never let
+        // "they couldn't see the button" be the reason someone can't press it. The
+        // gate is below — the clicker's Slack id must match the row's owner.
+        // This branch must precede the isReviewer check, which would otherwise turn
+        // the builder away from their own controls.
+        if (BUILDER_ACTIONS.has(String(action.action_id))) {
+            reply.code(200).send();   // ack inside Slack's 3s window, then work
+
+            // A url button still fires an interaction. Ack it and do nothing else —
+            // Slack has already opened the edit page for them.
+            if (action.action_id === "builder_reship") return;
+
+            void (async () => {
+                try {
+                    const row = isPitch ? await getPitchById(id) : await getSubmissionById(id);
+                    if (!row) return;
+
+                    // ── THE GATE ────────────────────────────────────────────────
+                    // Resolve the owner from the ROW, never from the payload: the
+                    // payload is the untrusted half of this exchange.
+                    const ownerSlackId = await getSlackIdForSub(String(row.user_sub));
+                    const clicker = String(payload.user?.id ?? "");
+                    if (!ownerSlackId || ownerSlackId !== clicker) {
+                        await respondEphemeral(
+                            payload.response_url,
+                            "These controls belong to the builder who submitted this.",
+                        );
+                        return;
+                    }
+                    // ────────────────────────────────────────────────────────────
+
+                    const state = String(row.status ?? "pending");
+                    if (state !== "pending" && state !== "changes_requested") {
+                        await respondEphemeral(
+                            payload.response_url,
+                            `You can't withdraw this — it's already ${state}.`,
+                        );
+                        return;
+                    }
+
+                    if (isPitch) await withdrawPitch(id);
+                    else await withdrawSubmission(id);
+
+                    const ch = String(row.slack_channel ?? payload.channel?.id ?? "");
+                    const t = String(row.slack_ts ?? payload.message?.ts ?? "");
+                    if (ch && t) {
+                        await postInThread(ch, t, `🗑 <@${clicker}> withdrew this — it's out of the review queue.`);
+                        await updateReviewCard(kind, ch, t, row, "withdrawn", clicker);
+                    }
+                } catch (err) {
+                    req.log.error(err, "builder action failed");
+                }
+            })();
+            return;
+        }
 
         // Signature proves the request is from Slack; this proves the clicker may review.
         if (!isReviewer(payload.user?.id)) {

@@ -17,7 +17,8 @@ export function isReviewer(slackUserId?: string): boolean {
     return !!slackUserId && REVIEWER_IDS.has(slackUserId);
 }
 
-export type SubmissionState = 'pending' | 'changes_requested' | 'approved' | 'rejected';
+export type SubmissionState =
+    | 'pending' | 'changes_requested' | 'approved' | 'rejected' | 'withdrawn';
 
 /** Thin wrapper over the Slack Web API that throws on `{ ok: false }`. */
 async function slack<T = Record<string, unknown>>(method: string, body: unknown): Promise<T & { ok: boolean }> {
@@ -41,6 +42,7 @@ const STATE_BANNER: Record<SubmissionState, string> = {
     changes_requested: '✏️ *Changes requested*',
     approved: '✅ *Approved* — promoted to YSWS',
     rejected: '❌ *Rejected*',
+    withdrawn: '🗑 *Withdrawn by the builder*',
 };
 
 async function slackGet<T = Record<string, unknown>>(
@@ -97,6 +99,110 @@ export async function fetchThreadReplies(channel: string, ts: string): Promise<T
         })),
     );
 }
+
+export async function postEphemeralInThread(
+    channel: string, threadTs: string, slackUserId: string,
+    blocks: unknown[], fallback: string,
+): Promise<boolean> {
+    if (!SLACK_TOKEN) return false;
+    const res = await fetch(`https://slack.com/api/chat.postEphemeral`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${SLACK_TOKEN}`,
+            'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify({
+            channel,
+            thread_ts: threadTs,
+            user: slackUserId,
+            text: fallback, blocks,
+        }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    // Best-effort by design — never throw. The commonest failure is
+    // `user_not_in_channel`: an ephemeral needs its recipient present in the channel.
+    if (!json.ok) console.warn(`chat.postEphemeral failed: ${json.error ?? 'unknown'}`);
+    return !!json.ok;
+}
+
+export function builderControlBlocks(kind: ReviewKind, row: Row, state: SubmissionState): unknown[] | null {
+    const value = `${kind}:${row.id}`;
+    const isPitch = kind === 'pitch';
+    const edit = isPitch ? pitchEditLink(String(row.id)) : editLink(String(row.id));
+    const elements: unknown[] = [];
+
+    if (state === 'changes_requested'){
+        elements.push({
+            type: 'button',
+            style: 'primary',
+            text: { type: 'plain_text', text: 'Edit and reship' },
+            url: edit, value, action_id: 'builder_reship',
+        });
+    } 
+
+    if ( state === 'pending' || state === 'changes_requested') {
+        elements.push({
+            type: 'button',
+            style: 'danger',
+            text: { type: 'plain_text', text: 'Withdraw' },
+            value, action_id: 'builder_withdraw',
+            confirm: {
+                title: { type: 'plain_text', text: 'Withdraw this?' },
+                text: { type: 'plain_text', text: `Are you sure you want to withdraw this ${isPitch ? 'pitch' : 'submission'}?` },
+                confirm: { type: 'plain_text', text: 'Yes, withdraw' },
+                deny: { type: 'plain_text', text: 'Cancel' },
+            },
+        });
+    }
+
+    if (!elements.length) return null;
+    return [
+        {
+            type: 'context',
+             elements: [{
+                type: 'mrkdwn',
+                text: state === 'changes_requested'
+                    ? '✏️ *A reviewer asked for changes.* Only you can see these buttons.'
+                    : '⏳ *Awaiting review.* Only you can see these buttons.',
+            }],
+        },
+            { type: 'actions', block_id: value, elements },
+    ];
+}
+
+export async function postBuilderControls(
+    kind: ReviewKind, row: Row, state: SubmissionState, slackUserId: string
+): Promise<void> {
+    const channel = String(row.slack_channel ?? '');
+    const ts = String(row.slack_ts ?? '');
+    if (!channel || !ts || !slackUserId) return;
+    const blocks = builderControlBlocks(kind, row, state);
+    if (!blocks) return;
+    await postEphemeralInThread(channel, ts, slackUserId, blocks, 'Omega builder controls');
+}
+
+/** Replies to an interaction, visible only to the clicker, without touching the
+ *  original message. Used to turn away anyone who isn't the builder. */
+export async function respondEphemeral(responseUrl: string, text: string): Promise<void> {
+    if (!responseUrl) return;
+    await fetch(responseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response_type: 'ephemeral', replace_original: false, text }),
+    });
+}
+
+export async function respondEmpheral(respondUrl: string, text: string): Promise<void> {
+    await fetch(respondUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, response_type: 'ephemeral', replace_original: false }),
+    });
+}
+        
+    
+
+
 
 export async function postReviewerMessage(
     channel: string,

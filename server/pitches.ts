@@ -2,9 +2,11 @@ import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { getSessionUser } from "./auth.ts";
 import {
     createPitch, getPitchById, listPitches, listPitchesBySub, resubmitPitch,
-    setPitchSlackRef, setPitchDuplicateCheck, type PitchInput, type Row,
+    setPitchSlackRef, setPitchDuplicateCheck, getSlackIdForSub, type PitchInput, type Row,
 } from "./db.ts";
-import { notifySlackOfNewReview, postInThread, updateReviewCard } from "./slack.ts";
+import {
+    notifySlackOfNewReview, postInThread, updateReviewCard, postBuilderControls,
+} from "./slack.ts";
 import { aiEnabled, findDuplicates, shortlist, type DuplicateCheck } from "./ai.ts";
 
 const MAX_LEN = 4000;
@@ -84,6 +86,20 @@ export default async function pitchRoutes(app: FastifyInstance) {
                 .then(async (ref) => {
                     if (!ref) return;
                     await setPitchSlackRef(row.id, ref.channel, ref.ts);
+
+                    // The builder's own controls, ephemeral so only they can see them.
+                    const slackId = await getSlackIdForSub(user.sub);
+                    if (slackId) {
+                        await postBuilderControls(
+                            'pitch',
+                            { ...row, slack_channel: ref.channel, slack_ts: ref.ts },
+                            'pending',
+                            slackId,
+                        );
+                    } else {
+                        req.log.info({ sub: user.sub }, 'no slack_id — builder gets no thread controls');
+                    }
+
                     await flagDuplicates(row, ref.channel, ref.ts, req.log);
                 })
                 .catch((err: unknown) => req.log.error(err, "slack pitch notify failed"));
