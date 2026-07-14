@@ -455,19 +455,19 @@
                 onclick={() => act('approve')}
                 disabled={acting}
                 style="background:#3d7a40; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
-              >✅ Approve</button>
+              >Approve</button>
 
               <button
                 onclick={() => act('request_changes')}
                 disabled={acting}
                 style="background:#2f6db0; color:#fff; border:2.5px solid #1c1714; border-radius:7px 10px 6px 11px/11px 6px 10px 7px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
-              >{showFeedBack ? 'Send changes' : '✏️ Request changes'}</button>
+              >{showFeedBack ? 'Send changes' : 'Request changes'}</button>
 
               <button
                 onclick={() => act('reject')}
                 disabled={acting}
                 style="background:#b3261e; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
-              >❌ Reject</button>
+              > Reject</button>
 
               {#if showFeedBack}
                 <button

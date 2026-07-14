@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyBaseLogger, FastifyRequest, FastifyReply } from "fastify";
-import { requireRole, getSessionUser } from "./auth.ts";
+import { requireRole, getSessionUser, type HcUser } from "./auth.ts";
 import {
     listSubmissions, getSubmissionById, listPitches, getPitchById, setSubmissionBadges,
     getSubmissionByPitchId,
@@ -10,6 +10,8 @@ import {
     fetchThreadReplies, postReviewerMessage, dmUser, postInThread, updateReviewCard,
     editLink, pitchEditLink, frontendUrl, postBuilderControls,
     type ReviewKind, type SubmissionState,
+    type Actor,
+    mention,
 } from "./slack.ts";
 import { BADGES, sanitizeBadges, hydrate } from "./badges.ts";
 /** Stored as a JSON string in Airtable; a malformed value must not break the panel. */
@@ -36,7 +38,7 @@ async function applyReviewAction(
     row: Row,
     action: ReviewAction,
     feedback: string,
-    reviewerName: string,
+    actor: Actor,
     log: FastifyBaseLogger,
 ): Promise<SubmissionState> {
     const id = String(row.id);
@@ -44,15 +46,15 @@ async function applyReviewAction(
 
     // 1. Persist — the part that must succeed.
     if (action === 'request_changes') {
-        if (isPitch) await requestPitchChanges(id, reviewerName, feedback);
-        else await requestSubmissionChanges(id, reviewerName, feedback);
+        if (isPitch) await requestPitchChanges(id, actor.name, feedback);
+        else await requestSubmissionChanges(id, actor.name, feedback);
     } else if (action === 'approve') {
         // approveSubmission also promotes the row into the YSWS table.
-        if (isPitch) await approvePitch(id, reviewerName);
-        else await approveSubmission(id, reviewerName);
+        if (isPitch) await approvePitch(id, actor.name);
+        else await approveSubmission(id, actor.name);
     } else {
-        if (isPitch) await rejectPitch(id, reviewerName);
-        else await rejectSubmission(id, reviewerName);
+        if (isPitch) await rejectPitch(id, actor.name);
+        else await rejectSubmission(id, actor.name);
     }
 
     const state = ACTION_STATE[action];
@@ -68,11 +70,11 @@ async function applyReviewAction(
                 // Rewrite the card so its buttons match reality — otherwise someone
                 // scrolling Slack could act again on an already-decided item.
                 const fresh = isPitch ? await getPitchById(id) : await getSubmissionById(id);
-                if (fresh) await updateReviewCard(kind, ch, ts, fresh, state);
+                if (fresh) await updateReviewCard(kind, ch, ts, fresh, state, actor.slackId ?? undefined );
 
                 const note = action === 'request_changes'
-                    ? `✏️ *${reviewerName}* requested changes:\n>${feedback.replace(/\n/g, '\n>')}`
-                    : `${action === 'approve' ? '✅' : '❌'} *${reviewerName}* ${state} this from the platform.`;
+                    ? `✏️ ${mention(actor)} requested changes:\n>${feedback.replace(/\n/g, '\n>')}`
+                    : `${action === 'approve' ? '✅' : '❌'} ${mention(actor)} ${state} this from the platform.`;
                 await postInThread(ch, ts, note);
             }
 
@@ -95,13 +97,13 @@ async function applyReviewAction(
             let dm: string;
             if (action === 'request_changes') {
                 const link = isPitch ? pitchEditLink(id) : editLink(id);
-                dm = `Your Omega ${label} *${row.title}* needs changes:\n\n>${feedback.replace(/\n/g, '\n>')}\n\nReship it here: ${link}`;
+                dm = `${mention(actor)} asked for changes on your Omega ${label} *${row.title}*:\n\n>${feedback.replace(/\n/g, '\n>')}\n\nReship it here: ${link}`;
             } else if (action === 'approve') {
                 dm = isPitch
-                    ? `💡 Your Omega pitch *${row.title}* was approved — start building! Submit the finished project: ${frontendUrl()}/submit`
-                    : `🎉 Your Omega submission *${row.title}* was approved!`;
+                    ? `💡 Your Omega pitch *${row.title}* was approved by ${mention(actor)} — start building! Submit the finished project: ${frontendUrl()}/submit`
+                    : `🎉 Your Omega submission *${row.title}* was approved by ${mention(actor)}!`;
             } else {
-                dm = `Your Omega ${label} *${row.title}* was rejected. Ask in #omega if you'd like context.`;
+                dm = `Your Omega ${label} *${row.title}* was rejected by ${mention(actor)}. Ask in #omega if you'd like context.`;
             }
             await dmUser(slackId, dm);
         } catch (err) {
@@ -110,6 +112,13 @@ async function applyReviewAction(
     })();
 
     return state;
+}
+
+/** The signed-in reviewer, in the shape Slack needs. `slack_id` rides along on the
+ *  session from the OIDC `slack_id` claim, so no lookup is required. When it's absent
+ *  (a login that predates the scope), mention() degrades to a bold name. */
+function actorOf(user: HcUser): Actor {
+    return { name: user.name ?? user.sub, slackId: user.slack_id };
 }
 
 /** One handler body, registered once per kind. */
@@ -143,7 +152,7 @@ function actionHandler(kind: ReviewKind) {
 
         try {
             const status = await applyReviewAction(
-                kind, row, action, feedback, user.name ?? user.sub, req.log,
+                kind, row, action, feedback, actorOf(user), req.log,
             );
             return { ok: true, status };
         } catch (err) {
@@ -278,12 +287,12 @@ export default async function reviewRoutes(app: FastifyInstance) {
         try {
             await postReviewerMessage(
                 String(row.slack_channel), String(row.slack_ts),
-                user.name ?? 'A reviewer', text,
+                actorOf(user), text,
             );
             if (alsoDm) {
                 const slackId = await getSlackIdForSub(String(row.user_sub));
                 if (slackId) {
-                    await dmUser(slackId, `💬 *${user.name ?? 'A reviewer'}* on your pitch *${row.title}*:\n\n>${text.replace(/\n/g, '\n>')}`);
+                    await dmUser(slackId, `💬 ${mention(actorOf(user))} on your pitch *${row.title}*:\n\n>${text.replace(/\n/g, '\n>')}`);
                 }
             }
             return { ok: true };
@@ -325,6 +334,7 @@ export default async function reviewRoutes(app: FastifyInstance) {
         const row = await getSubmissionById(id);
         if (!row) return reply.code(404).send({ error: 'Submission not found' });
 
+        // Airtable stores the NAME — a raw <@U…> is unreadable in a spreadsheet.
         const updated = await setSubmissionBadges(id, slugs, user.name ?? user.sub);
         if (!updated) return reply.code(500).send({ error: 'Failed to update badges' });
 
@@ -335,7 +345,7 @@ export default async function reviewRoutes(app: FastifyInstance) {
             if (row.slack_channel && row.slack_ts) {
                 postInThread(
                     String(row.slack_channel), String(row.slack_ts),
-                    `🏅 *${user.name ?? 'A reviewer'}* awarded badges: ${names}`,
+                    `🏅 ${mention(actorOf(user))} awarded badges: ${names}`,
                 ).catch((err: unknown) => req.log.error(err, 'badge thread post failed'));
             }
             getSlackIdForSub(String(row.user_sub))
@@ -366,13 +376,13 @@ export default async function reviewRoutes(app: FastifyInstance) {
         try {
             await postReviewerMessage(
                 String(row.slack_channel), String(row.slack_ts),
-                user.name ?? 'A reviewer', text,
+                actorOf(user), text,
             );
 
             if (alsoDm) {
                 const slackId = await getSlackIdForSub(String(row.user_sub));
                 if (slackId) {
-                    await dmUser(slackId, `💬 *${user.name ?? 'A reviewer'}* on your submission *${row.title}*:\n\n>${text.replace(/\n/g, '\n>')}`);
+                    await dmUser(slackId, `💬 ${mention(actorOf(user))} on your submission *${row.title}*:\n\n>${text.replace(/\n/g, '\n>')}`);
                 }
             }
             return { ok: true };

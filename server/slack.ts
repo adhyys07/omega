@@ -20,6 +20,9 @@ export function isReviewer(slackUserId?: string): boolean {
 export type SubmissionState =
     | 'pending' | 'changes_requested' | 'approved' | 'rejected' | 'withdrawn';
 
+export type Actor = { name: string; slackId?: string | null };
+
+
 /** Thin wrapper over the Slack Web API that throws on `{ ok: false }`. */
 async function slack<T = Record<string, unknown>>(method: string, body: unknown): Promise<T & { ok: boolean }> {
     const res = await fetch(`https://slack.com/api/${method}`, {
@@ -98,6 +101,13 @@ export async function fetchThreadReplies(channel: string, ts: string): Promise<T
             isParent: m.ts === ts,
         })),
     );
+}
+/** A real Slack mention when we know who acted, a bold name when we don't.
+ *  Must be synchronous: every call site interpolates it straight into a template
+ *  string, and an async version would render as "[object Promise]".
+ *  Takes the Slack USER ID (U…), not a handle — <@handle> does not resolve. */
+export function mention(actor: Actor): string {
+    return actor.slackId ? `<@${actor.slackId}>` : `*${actor.name}*`;
 }
 
 export async function postEphemeralInThread(
@@ -199,22 +209,20 @@ export async function respondEmpheral(respondUrl: string, text: string): Promise
         body: JSON.stringify({ text, response_type: 'ephemeral', replace_original: false }),
     });
 }
-        
-    
-
-
 
 export async function postReviewerMessage(
     channel: string,
     ts: string,
-    author: string,
+    author: Actor,
     text: string,
 ): Promise<void> {
     if (!SLACK_TOKEN) return;
     await slack('chat.postMessage', {
         channel,
         thread_ts: ts,
-        text: `*${author}*: ${text}`,
+        // mention() already emits its own bold for the no-slack-id fallback; wrapping
+        // it again would produce *<@U…>*, which Slack does not render as a mention.
+        text: `${mention(author)}: ${text}`,
     });
 }
 
