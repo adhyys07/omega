@@ -10,6 +10,7 @@
     code_url: string | null
     playable_url?: string | null
     demo_video_url?: string | null
+    ai_disclosure?: string | null
     hackatime_hours: number | null
     description?: string | null
     why?: string | null
@@ -490,6 +491,24 @@
               <pre style="margin:0; max-height:340px; overflow:auto; white-space:pre-wrap; word-break:break-word; font-family:ui-monospace,monospace; font-size:.78rem; line-height:1.5; color:#1c1714;">{gh.readme.content}</pre>
             </div>
           {/if}
+        {/if}
+
+        <!-- AI disclosure. Shown for projects only; pitches have no code yet. -->
+        {#if kind === 'projects'}
+          <div style="padding:12px 16px; border-bottom:2px dashed rgba(28,23,20,.28);">
+            <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--orange); margin-bottom:6px;">
+              🤖 AI disclosure
+            </div>
+            {#if selected.ai_disclosure}
+              <p style="margin:0; font-family:'Space Grotesk',sans-serif; font-size:.85rem; line-height:1.6; color:#5b4f44; white-space:pre-wrap;">{selected.ai_disclosure}</p>
+            {:else}
+              <!-- Required since the policy shipped, so a blank one means the row predates
+                   it — not that the builder refused to answer. Don't imply bad faith. -->
+              <p style="margin:0; font-family:'Space Grotesk',sans-serif; font-size:.82rem; color:#b07410;">
+                None given — this submission predates the AI disclosure policy.
+              </p>
+            {/if}
+          </div>
         {/if}
 
         <!-- lineage: the other half of this idea's life -->

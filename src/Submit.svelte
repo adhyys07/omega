@@ -8,6 +8,7 @@
      pitch_id: '',
      title: '', code_url: '', playable_url: '', description: '', screenshot_url: '',
      demo_video_url: '',
+     ai_disclosure: '',
      hackatime_project: '', hackatime_hours: null as number | null,
      hackatime_start_date: null as string | null,
 
@@ -39,6 +40,7 @@
     description: string | null
     screenshot_url: string | null
     demo_video_url: string | null
+    ai_disclosure: string | null
     hackatime_project: string | null
     hackatime_start_date: string | null
     review_feedback: string | null
@@ -111,6 +113,7 @@
     f.description = s.description ?? ''
     f.screenshot_url = s.screenshot_url ?? ''
     f.demo_video_url = s.demo_video_url ?? ''
+    f.ai_disclosure = s.ai_disclosure ?? ''
     f.hackatime_project = s.hackatime_project ?? ''
     f.hackatime_start_date = s.hackatime_start_date ?? null
   }
@@ -419,6 +422,26 @@
             {/if}
             <input type="file" accept={ACCEPT.demo_video_url} disabled={busy} onchange={(e) => uploadMedia(e, 'demo_video_url')} style="display:none;" />
           </label>
+        </div>
+
+        <!-- AI disclosure. Required, and the placeholder models a GOOD answer on purpose:
+             "be specific" is useless advice without an example of what specific looks like. -->
+        <div class="field">
+          <label for="ai_disclosure" style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#1c1714; margin-bottom:6px;">
+            🤖 What did you use AI for? <span style="color:var(--orange);">*</span>
+          </label>
+          <textarea
+            id="ai_disclosure"
+            bind:value={f.ai_disclosure}
+            rows="3"
+            required
+            placeholder={'e.g. "Used Claude to debug my Room database migrations and generate the settings screen boilerplate. Wrote the sync engine and UI myself."\n\nDidn\'t use any? Just write "None".'}
+            style={inputStyle}
+          ></textarea>
+          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; line-height:1.5; margin-top:2px;">
+            AI is allowed — hiding it isn't. Be specific and honest; an honest disclosure has never
+            cost anyone an approval. You should be able to explain any code you ship.
+          </div>
         </div>
       </div>
 

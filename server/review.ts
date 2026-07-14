@@ -182,6 +182,7 @@ export default async function reviewRoutes(app: FastifyInstance) {
             status: r.status,
             code_url: r.code_url ?? null,
             demo_video_url: r.demo_video_url ?? null,
+            ai_disclosure: r.ai_disclosure ?? null,
             description: r.description ?? null,
             playable_url: r.playable_url ?? null,
             first_name: r.first_name ?? null,

@@ -43,6 +43,9 @@ const FIXTURE_PROJECT = {
     description:
         'Shipped the tide widget: GPS lookup, nearest NOAA station, next four tide events, '
         + 'and an offline cache so it still works with no signal at the beach.',
+    ai_disclosure:
+        'Used Claude to debug my Room database migrations and to generate the settings-screen '
+        + 'boilerplate. Wrote the NOAA station matching and the offline cache myself.',
 };
 
 export default async function devRoutes(app: FastifyInstance) {

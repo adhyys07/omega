@@ -433,6 +433,9 @@ export type SubmissionInput = {
     description: string;
     screenshot_url?: string;
     demo_video_url?: string;
+    /** What the builder used AI for. Required by the route; "None" is a valid answer.
+     *  The landing page promises this field exists — see the AI policy section. */
+    ai_disclosure?: string;
     hackatime_project?: string;
     hackatime_hours?: number | null;
     /** YYYY-MM-DD — the project's first Hackatime heartbeat. */
@@ -457,6 +460,7 @@ export async function createSubmission(input: SubmissionInput): Promise<Row> {
         description: input.description,
         screenshot_url: input.screenshot_url ?? "",
         demo_video_url: input.demo_video_url ?? "",
+        ai_disclosure: input.ai_disclosure ?? "",
         hackatime_project: input.hackatime_project ?? null,
 
         first_name: first_name ?? "",
@@ -504,6 +508,7 @@ export async function listSubmissionsBySub(sub: string): Promise<Row[]> {
         description: r.description ?? null,
         screenshot_url: r.screenshot_url ?? null,
         demo_video_url: r.demo_video_url ?? null,
+        ai_disclosure: r.ai_disclosure ?? null,
         badges: Array.isArray(r.badges) ? r.badges : [],
         created_at: r.created_at ?? null,
     }));
@@ -582,7 +587,7 @@ export async function requestSubmissionChanges(id: string, reviewer: string, fee
 
 export async function resubmitSubmission(
     id:string,
-    patch: Partial<Pick<SubmissionInput, 'title' | 'code_url' | 'playable_url' | 'description' | 'screenshot_url' | 'demo_video_url' >>
+    patch: Partial<Pick<SubmissionInput, 'title' | 'code_url' | 'playable_url' | 'description' | 'screenshot_url' | 'demo_video_url' | 'ai_disclosure' >>
 ): Promise<Row | null> {
     return updateRecord(TABLE.projectSubmissions, id, {
         ...patch,

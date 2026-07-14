@@ -41,9 +41,15 @@ export default async function submissionRoutes(app: FastifyInstance) {
         if (!user) return reply.status(401).send({ error: 'Unauthorized' });
 
         const b = (req.body ?? {}) as Partial<SubmissionInput>;
-        const required: (keyof SubmissionInput)[] = ["pitch_id", "title", "code_url", "playable_url", "description"];
+        // ai_disclosure is REQUIRED — the landing page promises the field exists, and an
+        // optional one gets skipped by exactly the people we most need to hear from.
+        // "None" is a perfectly valid answer; saying nothing at all is not.
+        const required: (keyof SubmissionInput)[] = ["pitch_id", "title", "code_url", "playable_url", "description", "ai_disclosure"];
         for (const k of required) {
             if (!b[k] || String(b[k]).trim() === "") return reply.code(400).send({ error: `Missing field: ${k}` });
+        }
+        if (String(b.ai_disclosure).length > 2000) {
+            return reply.code(400).send({ error: "AI disclosure is too long" });
         }
 
         // You pitch before you build: a project must fulfil one of YOUR approved pitches.
@@ -115,9 +121,14 @@ export default async function submissionRoutes(app: FastifyInstance) {
         }
 
         const b = (req.body ?? {}) as Partial<SubmissionInput>;
-        const required: (keyof SubmissionInput)[] = ["title", "code_url", "playable_url", "description"];
+        // A reship can change the code, so it can change the AI story too — re-require it
+        // rather than silently carrying the old answer forward.
+        const required: (keyof SubmissionInput)[] = ["title", "code_url", "playable_url", "description", "ai_disclosure"];
         for (const k of required) {
             if (!b[k] || String(b[k]).trim() === "") return reply.code(400).send({ error: `Missing field: ${k}` });
+        }
+        if (String(b.ai_disclosure).length > 2000) {
+            return reply.code(400).send({ error: "AI disclosure is too long" });
         }
         if (b.demo_video_url && !/^https:\/\//i.test(b.demo_video_url.trim())) {
             return reply.code(400).send({ error: "Demo video URL must be an https link" });
@@ -126,6 +137,7 @@ export default async function submissionRoutes(app: FastifyInstance) {
         const patch = {
             title: b.title, code_url: b.code_url, playable_url: b.playable_url,
             description: b.description, screenshot_url: b.screenshot_url, demo_video_url: b.demo_video_url,
+            ai_disclosure: b.ai_disclosure,
         };
         const updated = await resubmitSubmission(id, patch);
         if (!updated) return reply.code(500).send({ error: 'Update failed' });

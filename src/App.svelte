@@ -221,12 +221,25 @@
     { lead: 'No double dipping.', rest: ' Omega submissions cannot count toward any other YSWS program. No exceptions.', last: false },
     { lead: '20 hours minimum per project.', rest: ' Hackatime logs required. Reviewers verify every session.', last: false },
     { lead: 'Max 3 projects', rest: ' per participant over the two-month window.', last: false },
+    { lead: 'AI is allowed — but declare it.', rest: ' Copilot, Claude, Cursor, whatever helps you ship. The idea, the architecture, and the understanding have to be yours, and you tell us what you used it for when you submit. Undeclared AI is what gets you rejected — not AI.', last: false },
     { lead: 'Fraud = ban.', rest: ' Fulfillment cancelled, case sent to the Hack Club fraud team. Severity determines the ban length.', last: true },
+  ]
+
+  // The AI stance, spelled out. Kept as data so the copy lives next to the rules
+  // rather than buried in markup.
+  const aiPolicy = [
+    { ok: true,  lead: 'Declare it when you submit.', rest: "There's a field for it. Say what you used AI for, specifically. An honest disclosure has never cost anyone an approval." },
+    { ok: true,  lead: 'Be able to explain your code.', rest: 'A reviewer may ask how something works. "The AI wrote it" isn\'t an answer.' },
+    { ok: true,  lead: 'Log honest hours.', rest: "Hackatime tracks real time. If AI generated a feature in five minutes, don't bill five hours for it." },
+    { ok: false, lead: 'Hiding it is the problem.', rest: "Undeclared AI, padded hours, or an app you can't explain gets rejected — and repeat offences go to the fraud team." },
   ]
 
   const faqs = [
     { q: 'Do I need to build Android AND iOS?', a: "You can build for both, it is not compulsory to create apps for both the platforms" },
     { q: 'How does Ω tokens work?', a: 'Approved hours × tier multiplier = Ω tokens. Roughly $4–6 per hour. Spend it on anything in the shop.' },
+    { q: 'Can I use AI to build my project?', a: "Yes. Use whatever tools help you ship — but you have to declare what you used them for when you submit. The rule is simple: you must be able to explain every line of your own code. A reviewer may ask, and \"the AI wrote it\" isn't an answer." },
+    { q: 'What counts as a good AI disclosure?', a: "Be specific and be honest. \"Used Claude to debug my Room database migrations and generate the settings screen boilerplate\" is a great disclosure. \"Used AI a bit\" is not. Nobody has ever been rejected for an honest disclosure — people get rejected for hiding one." },
+    { q: 'Will using AI hurt my review?', a: "No. Shipping something you don't understand will. So will Hackatime hours that don't match real work — if you generated a feature in 5 minutes, don't log 5 hours for it." },
     { q: 'Can I also submit to other YSWS?', a: 'No. No double dipping with any other YSWS program whatsoever.' },
     { q: "Who's eligible?", a: 'High schoolers or younger. 100% free — funded by Hack Club donors.' },
     { q: 'How much does it cost?', a: 'Nothing. The entire program is free, funded by donations to The Hack Foundation.' },
@@ -568,6 +581,36 @@
               <div><strong style="color:#1c1714;">{rule.lead}</strong>{rule.rest}</div>
             </div>
           {/each}
+        </div>
+      </div>
+
+      <!-- AI policy -->
+      <div id="ai" style="margin-top:50px;">
+        <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:8px;">✦ AI policy</div>
+        <h3 class="sub-h">Use AI. Just tell us.</h3>
+
+        <div style="
+          border:2.5px solid #1c1714;
+          border-radius:16px 11px 18px 10px/10px 18px 11px 16px;
+          background:rgba(47,109,176,.07);
+          box-shadow:4px 4px 0 rgba(28,23,20,.16);
+          padding:22px 24px;
+          margin-top:18px;
+        ">
+          <p style="margin:0 0 16px; font-size:.95rem; color:#5b4f44; line-height:1.68;">
+            We're not going to pretend it's 2019. Copilot, Claude, Cursor — use them. What we care about
+            is that <strong style="color:#1c1714;">the project is actually yours</strong>: your idea, your
+            architecture, your understanding.
+          </p>
+
+          <div style="display:grid; gap:13px;">
+            {#each aiPolicy as p}
+              <div style="display:flex; gap:12px; align-items:flex-start; font-size:.9rem; color:#5b4f44; line-height:1.6;">
+                <span style="flex:none; font-weight:800; color:{p.ok ? '#3d7a40' : '#b3261e'};">{p.ok ? '✓' : '✕'}</span>
+                <div><strong style="color:#1c1714;">{p.lead}</strong> {p.rest}</div>
+              </div>
+            {/each}
+          </div>
         </div>
       </div>
 
