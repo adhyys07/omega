@@ -437,6 +437,8 @@ export type SubmissionInput = {
     hackatime_hours?: number | null;
     /** YYYY-MM-DD — the project's first Hackatime heartbeat. */
     hackatime_start_date?: string | null;
+    /** Set only by the admin dev stage-seeder. Marks a row wipeSeeded() may delete. */
+    seeded?: boolean;
 };
 
 
@@ -461,6 +463,7 @@ export async function createSubmission(input: SubmissionInput): Promise<Row> {
         last_name: rest.join(" "),
         email: (u?.email as string) ?? "",
         status: "pending",
+        seeded: input.seeded ?? false,
         created_at: now(),
     };
     if (input.hackatime_hours !== null && input.hackatime_hours !== undefined) {
@@ -504,6 +507,17 @@ export async function listSubmissionsBySub(sub: string): Promise<Row[]> {
         badges: Array.isArray(r.badges) ? r.badges : [],
         created_at: r.created_at ?? null,
     }));
+}
+
+/** The project that fulfilled a given pitch, if one has been submitted yet.
+ *  `pitch_id` is plain text holding a record id — the relationship lives in the app,
+ *  not in Airtable — so this is a scan by formula rather than a link traversal. */
+export async function getSubmissionByPitchId(pitchId: string): Promise<Row | null> {
+    const rows = await listAll(TABLE.projectSubmissions, {
+        filterByFormula: `{pitch_id}='${esc(pitchId)}'`,
+    });
+    rows.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+    return rows[0] ?? null;
 }
 
 export async function rejectSubmission(id: string, reviewer?: string): Promise<void> {
@@ -587,6 +601,8 @@ export type PitchInput = {
     description: string;
     /** How the idea helps people — the second half of the landing-page prompt. */
     why: string;
+    /** Set only by the admin dev stage-seeder. Marks a row wipeSeeded() may delete. */
+    seeded?: boolean;
 };
 
 /** The AUTHOR-facing shape of a pitch. This is a whitelist on purpose: anything
@@ -633,6 +649,7 @@ export async function createPitch(input: PitchInput): Promise<Row> {
         last_name: rest.join(" "),
         email: (u?.email as string) ?? "",
         status: "pending",
+        seeded: input.seeded ?? false,
         created_at: now(),
     });
 }
@@ -755,4 +772,23 @@ export async function updateOrder(
         note: row.note ?? null,
         fulfilled_at: row.fulfilled_at ?? null,
     };
+}
+
+// --- Dev tools -------------------------------------------------------------
+// Used only by the admin stage-seeder (server/dev.ts), which is itself only
+// registered when ALLOW_DEV_TOOLS=1.
+
+/** Deletes every SEEDED pitch and submission belonging to `sub`, and nothing else.
+ *  The `{seeded}=1` half of each formula is load-bearing: it is what makes a stage
+ *  reset unable to destroy a real builder's work, even their own. */
+export async function wipeSeeded(sub: string): Promise<{ pitches: number; submissions: number }> {
+    const where = `AND({user_sub}='${esc(sub)}',{seeded}=1)`;
+    const [pitches, submissions] = await Promise.all([
+        listAll(TABLE.pitches, { filterByFormula: where }),
+        listAll(TABLE.projectSubmissions, { filterByFormula: where }),
+    ]);
+    // Sequential on purpose: Airtable caps us at 5 req/sec and a wipe is not hot.
+    for (const r of submissions) await deleteRecord(TABLE.projectSubmissions, String(r.id));
+    for (const r of pitches) await deleteRecord(TABLE.pitches, String(r.id));
+    return { pitches: pitches.length, submissions: submissions.length };
 }

@@ -1,11 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import Review from './Review.svelte'
+  import Stages from './Stages.svelte'
 
   let path = $state(location.pathname)
+
+  // The dev routes are not registered at all unless ALLOW_DEV_TOOLS=1, so a 404 here
+  // is the honest answer to "are dev tools on?" — no need for a separate config flag.
+  let devEnabled = $state(false)
+
   onMount(() => {
     const onPop = () => (path = location.pathname)
     addEventListener('popstate', onPop)
+    fetch('/api/admin/dev/stages', { credentials: 'include' })
+      .then((r) => { devEnabled = r.ok })
+      .catch(() => { devEnabled = false })
     return () => removeEventListener('popstate', onPop)
   })
 
@@ -21,10 +30,17 @@
     { id: 'orders',   label: '☑ Fulfillment',     href: '/admin/orders' },
     { id: 'items',    label: '▣ Shop items', href: '/admin/items' },
     { id: 'signups',  label: '✉ Signups',    href: '/admin/signups' },
-  ] as const
+  ]
+
+  const tools = $derived(
+    devEnabled
+      ? [...TOOLS, { id: 'stages', label: '⚡ Stage jump', href: '/admin/stages' }]
+      : TOOLS
+  )
 
   const active = $derived(
     path.startsWith('/admin/review') ? 'review' :
+    path.startsWith('/admin/stages') ? 'stages' :
     path.startsWith('/admin/orders') ? 'orders' :
     path.startsWith('/admin/items') ? 'items' :
     path.startsWith('/admin/signups') ? 'signups' :
@@ -366,7 +382,7 @@
     </div>
 
     <nav style="display:flex; gap:8px; padding:0 24px 12px; flex-wrap: wrap;">
-      {#each TOOLS as tool}
+      {#each tools as tool (tool.id)}
         <a
           href={tool.href}
           onclick={(e) => go(tool.href, e)}
@@ -670,6 +686,12 @@
     <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,7vw,3.4rem); letter-spacing:-.02em; margin:0 0 8px; text-shadow:3px 3px 0 rgba(255,69,0,.16);">Review</h1>
     <p style="font-size:1rem; color:#5b4f44; margin:0 0 24px;">Every submission and its Slack thread. Messages you send here land in the project's thread.</p>
     <Review />
+
+  {:else if active === 'stages'}
+    <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>
+    <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,7vw,3.4rem); letter-spacing:-.02em; margin:0 0 8px; text-shadow:3px 3px 0 rgba(255,69,0,.16);">Stage jump</h1>
+    <p style="font-size:1rem; color:#5b4f44; margin:0 0 24px;">Drop your own account at any point in the builder flow, then walk it as a builder would.</p>
+    <Stages />
 
   {:else if active === 'signups'}
     <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>

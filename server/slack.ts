@@ -35,7 +35,9 @@ async function slack<T = Record<string, unknown>>(method: string, body: unknown)
 }
 
 const STATE_BANNER: Record<SubmissionState, string> = {
-    pending: '',
+    // Never empty: this now always renders as a context block, and Slack rejects a
+    // context element whose text is an empty string (invalid_blocks).
+    pending: '⏳ *Awaiting review*',
     changes_requested: '✏️ *Changes requested*',
     approved: '✅ *Approved* — promoted to YSWS',
     rejected: '❌ *Rejected*',
@@ -168,24 +170,28 @@ function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, actor?
         });
     }
 
-    if (state === 'pending') {
-        const value = `${kind}:${row.id}`;
+    // Decisions are made in the panel, never here. Slack renders one card for the
+    // whole channel — there is no per-viewer visibility in Block Kit — so an in-card
+    // Approve button is a button the builder can see on their own pitch. The panel is
+    // reviewer-gated, so the card links there instead of acting.
+    if (state === 'pending' || state === 'changes_requested') {
         blocks.push({
-            type: 'actions',
-            block_id: `${kind}:${row.id}`,
-            elements: [
-                { type: 'button', style: 'primary', text: { type: 'plain_text', text: '✅ Approve' }, value, action_id: 'approve_submission' },
-                { type: 'button', text: { type: 'plain_text', text: '✏️ Request changes' }, value, action_id: 'request_changes' },
-                { type: 'button', style: 'danger', text: { type: 'plain_text', text: '❌ Reject' }, value, action_id: 'reject_submission' },
-            ],
-        });
-    } else {
-        blocks.push({
-            type: 'context',
-            elements: [{ type: 'mrkdwn', text: `${STATE_BANNER[state]}${actor ? ` by <@${actor}>` : ''}` }],
+            type: 'section',
+            text: { type: 'mrkdwn', text: `<${panelLink(kind, String(row.id))}|⚖ *Review in panel* ↗>` },
         });
     }
+
+    blocks.push({
+        type: 'context',
+        elements: [{ type: 'mrkdwn', text: `${STATE_BANNER[state]}${actor ? ` by <@${actor}>` : ''}` }],
+    });
     return blocks;
+}
+
+/** Deep link into the review panel, landing on this exact item. */
+export function panelLink(kind: ReviewKind, id: string): string {
+    const k = kind === 'pitch' ? 'pitches' : 'projects';
+    return `${frontendUrl()}/admin/review?kind=${k}&id=${encodeURIComponent(id)}`;
 }
 
 /** Posts a review card as a new top-level message. Returns the coordinates

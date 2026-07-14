@@ -58,6 +58,33 @@
   let loadingThread = $state(false)
   let err = $state('')
 
+  // The other half of an idea's life: for a project, the pitch it came from; for a
+  // pitch, the project that fulfilled it. Lets a reviewer answer "did they build what
+  // they pitched?" without leaving the panel.
+  type Counterpart = {
+    id: string
+    title: string | null
+    status: string
+    description: string | null
+    why?: string | null
+    review_feedback?: string | null
+    code_url?: string | null
+    playable_url?: string | null
+    created_at?: string | null
+  }
+  let linked = $state<Counterpart | null>(null)
+  let linkedReason = $state('')
+  let loadingLink = $state(false)
+
+  const linkUrl = (k: Kind, id: string) =>
+    k === 'pitches' ? `/api/review/pitches/${id}/project` : `/api/review/${id}/pitch`
+
+  const LINK_EMPTY: Record<string, string> = {
+    not_built: 'Not built yet — no project has been submitted against this pitch.',
+    no_pitch: 'No pitch attached. This project predates the pitch gate.',
+    missing: 'The pitch this project points at no longer exists.',
+  }
+
   const STATUS_STYLE: Record<string, string> = {
     approved: 'background:rgba(74,150,80,.16); color:#3d7a40;',
     rejected: 'background:rgba(179,38,30,.14); color:#b3261e;',
@@ -66,8 +93,41 @@
   }
   const STATUS_LABEL: Record<string, string> = { changes_requested: 'changes req.' }
 
+  /** "14 Jul 2026, 18:42" — absolute, because a reviewer comparing a pitch to the
+   *  project built from it cares about the real dates, not "3 days ago". */
+  function fmtDate(iso: string | null | undefined): string {
+    if (!iso) return ''
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    return d.toLocaleString(undefined, {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    })
+  }
+
+  /** Short form for the dense queue rows. */
+  function fmtDay(iso: string | null | undefined): string {
+    if (!iso) return ''
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  }
+
   onMount(async () => {
-    load()
+    // Deep link from a Slack card: ?kind=pitches|projects&id=recXXX — pick the tab
+    // BEFORE loading so we fetch the right list, then open the item it names.
+    const q = new URLSearchParams(location.search)
+    const wantKind = q.get('kind')
+    const wantId = q.get('id')
+    if (wantKind === 'pitches' || wantKind === 'projects') kind = wantKind
+
+    await load()
+
+    if (wantId) {
+      const hit = subs.find((s) => s.id === wantId)
+      if (hit) open(hit)
+      else listErr = 'That item is no longer in this queue.'
+    }
+
     try {
       const r = await fetch('/api/review/badges')
       if (r.ok) catalog = await r.json()
@@ -139,6 +199,9 @@
     showFeedBack = false
     feedback = ''
     awarded = new Set(s.badges ?? [])   // pre-toggle chips to what's already awarded
+
+    loadCounterpart(kind, s.id)   // independent of the thread; don't await
+
     if (!s.hasThread) return
     loadingThread = true
     try {
@@ -150,6 +213,27 @@
       err = e instanceof Error ? e.message : 'Could not load the thread'
     } finally {
       loadingThread = false
+    }
+  }
+
+  /** Best-effort: a failure here must never blank out the item you're reviewing. */
+  async function loadCounterpart(k: Kind, id: string) {
+    linked = null
+    linkedReason = ''
+    loadingLink = true
+    try {
+      const r = await fetch(linkUrl(k, id))
+      if (!r.ok) throw new Error('lookup failed')
+      const data = await r.json()
+      // A stale response from a previously-selected row must not overwrite the
+      // current one — the user can click through the queue faster than Airtable replies.
+      if (selected?.id !== id) return
+      linked = data.pitch ?? data.project ?? null
+      linkedReason = linked ? '' : (data.reason ?? '')
+    } catch {
+      if (selected?.id === id) linkedReason = 'error'
+    } finally {
+      if (selected?.id === id) loadingLink = false
     }
   }
 
@@ -270,6 +354,9 @@
                 {STATUS_LABEL[s.status] ?? s.status}
               </span>
               <span style="font-size:.72rem; color:#5b4f44;">{who(s)}</span>
+              {#if s.created_at}
+                <span title={fmtDate(s.created_at)} style="font-size:.72rem; color:#5b4f44;">· {fmtDay(s.created_at)}</span>
+              {/if}
               {#if s.duplicate_check?.matches?.length}
                 <span title="Possible duplicate idea — open to see the matches" style="font-size:.72rem; color:#b07410; font-weight:700;">🤖 dupe?</span>
               {/if}
@@ -291,11 +378,60 @@
           <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1rem;">{selected.title ?? 'Untitled'}</div>
           <div style="font-family:'Space Grotesk',sans-serif; font-size:.78rem; color:#5b4f44; margin-top:2px;">
             {who(selected)}
+            {#if selected.created_at} · <span title="Submitted">🕘 {fmtDate(selected.created_at)}</span>{/if}
             {#if selected.hackatime_hours} · {selected.hackatime_hours}h{/if}
             {#if selected.code_url}
               · <a href={selected.code_url} target="_blank" rel="noopener" style="color:#c2451a; font-weight:700; text-decoration:none;">code ↗</a>
             {/if}
           </div>
+        </div>
+
+        <!-- lineage: the other half of this idea's life -->
+        <div style="padding:12px 16px; border-bottom:2px dashed rgba(28,23,20,.28); background:rgba(47,109,176,.05);">
+          <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#2f6db0; margin-bottom:7px;">
+            {kind === 'pitches' ? '🚀 Built as' : '💡 Pitched as'}
+          </div>
+
+          {#if loadingLink}
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44;">Looking…</div>
+          {:else if linked}
+            <div style="font-family:'Space Grotesk',sans-serif;">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:5px;">
+                <span style="font-weight:800; font-size:.9rem;">{linked.title ?? 'Untitled'}</span>
+                <span style="padding:1px 8px; border-radius:999px; font-size:.68rem; font-weight:700; {STATUS_STYLE[linked.status] ?? ''}">
+                  {STATUS_LABEL[linked.status] ?? linked.status}
+                </span>
+                {#if linked.created_at}
+                  <span style="font-size:.72rem; color:#5b4f44;">🕘 {fmtDate(linked.created_at)}</span>
+                {/if}
+              </div>
+
+              {#if linked.description}
+                <p style="margin:0 0 6px; font-size:.8rem; line-height:1.5; color:#5b4f44;">{linked.description}</p>
+              {/if}
+              {#if linked.why}
+                <p style="margin:0 0 6px; font-size:.78rem; line-height:1.5; color:#5b4f44;"><strong>Why:</strong> {linked.why}</p>
+              {/if}
+              {#if linked.review_feedback}
+                <p style="margin:0 0 6px; font-size:.78rem; line-height:1.5; color:#2f6db0;"><strong>Reviewer asked:</strong> {linked.review_feedback}</p>
+              {/if}
+
+              {#if linked.playable_url || linked.code_url}
+                <div style="display:flex; gap:12px; font-size:.78rem; font-weight:700;">
+                  {#if linked.playable_url}
+                    <a href={linked.playable_url} target="_blank" rel="noopener" style="color:#c2451a; text-decoration:none;">demo ↗</a>
+                  {/if}
+                  {#if linked.code_url}
+                    <a href={linked.code_url} target="_blank" rel="noopener" style="color:#c2451a; text-decoration:none;">code ↗</a>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {:else}
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44;">
+              {LINK_EMPTY[linkedReason] ?? 'Could not load the linked record.'}
+            </div>
+          {/if}
         </div>
 
         {#if selected.status === 'pending' || selected.status === 'changes_requested'}

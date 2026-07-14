@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyBaseLogger, FastifyRequest, FastifyReply }
 import { requireRole, getSessionUser } from "./auth.ts";
 import {
     listSubmissions, getSubmissionById, listPitches, getPitchById, setSubmissionBadges,
+    getSubmissionByPitchId,
     approveSubmission, rejectSubmission, requestSubmissionChanges,
     approvePitch, rejectPitch, requestPitchChanges, getSlackIdForSub, type Row,
 } from "./db.ts";
@@ -176,6 +177,59 @@ export default async function reviewRoutes(app: FastifyInstance) {
             duplicate_check: parseDuplicateCheck(r.duplicate_check),
             created_at: r.created_at ?? null,
         }));
+    });
+
+    /** The pitch a project came from — so a reviewer can ask "did they build what
+     *  they pitched?" without going and hunting for it. Reviewer-gated, so unlike the
+     *  author-facing pitchView this may safely carry `duplicate_check`. */
+    app.get('/api/review/:id/pitch', { preHandler: requireRole('reviewer') }, async (req, reply) => {
+        const { id } = req.params as { id: string };
+        const sub = await getSubmissionById(id);
+        if (!sub) return reply.status(404).send({ error: 'Submission not found' });
+
+        const pitchId = String(sub.pitch_id ?? '');
+        // Submissions created before the pitch gate existed have no pitch. That's a
+        // fact about the data, not an error — the panel renders it as "no pitch".
+        if (!pitchId) return { pitch: null, reason: 'no_pitch' };
+
+        const p = await getPitchById(pitchId).catch(() => null);
+        if (!p) return { pitch: null, reason: 'missing' };   // id present but row gone
+
+        return {
+            pitch: {
+                id: p.id,
+                title: p.title ?? null,
+                description: p.description ?? null,
+                why: p.why ?? null,
+                status: p.status ?? 'pending',
+                review_feedback: p.review_feedback ?? null,
+                duplicate_check: parseDuplicateCheck(p.duplicate_check),
+                created_at: p.created_at ?? null,
+            },
+        };
+    });
+
+    /** The reverse: the project that fulfilled a pitch, if it's been built yet. */
+    app.get('/api/review/pitches/:id/project', { preHandler: requireRole('reviewer') }, async (req, reply) => {
+        const { id } = req.params as { id: string };
+        const pitch = await getPitchById(id);
+        if (!pitch) return reply.status(404).send({ error: 'Pitch not found' });
+
+        const s = await getSubmissionByPitchId(id);
+        if (!s) return { project: null, reason: 'not_built' };
+
+        return {
+            project: {
+                id: s.id,
+                title: s.title ?? null,
+                status: s.status ?? 'pending',
+                code_url: s.code_url ?? null,
+                playable_url: s.playable_url ?? null,
+                description: s.description ?? null,
+                badges: Array.isArray(s.badges) ? s.badges : [],
+                created_at: s.created_at ?? null,
+            },
+        };
     });
 
     /** A pitch's Slack thread. Pitches and projects live in different tables, so
