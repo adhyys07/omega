@@ -15,6 +15,8 @@ import {
 } from "./slack.ts";
 import { BADGES, sanitizeBadges, hydrate } from "./badges.ts";
 import { checkGithubRepo, fetchReadme } from "./github-api.ts";
+import { TIERS, tierBySlug, computePayout, MAX_HOURS } from "./tiers.ts";
+import { setSubmissionAssessment, payoutSubmission } from "./db.ts";
 /** Stored as a JSON string in Airtable; a malformed value must not break the panel. */
 
 
@@ -25,6 +27,7 @@ type GithubPayload = {
     // outcomes a reviewer needs to see, not errors.
     readme: Awaited<ReturnType<typeof fetchReadme>> | null;
 }
+
 const ghCache = new Map<string, { at: number; data: GithubPayload }>();
 const GH_TTL_MS = 5*60*1000;  // 5 minutes
 
@@ -135,7 +138,9 @@ function actionHandler(kind: ReviewKind) {
     return async (req: FastifyRequest, reply: FastifyReply) => {
         const user = getSessionUser(req)!;   // requireRole guarantees a session
         const { id } = req.params as { id: string };
-        const body = (req.body ?? {}) as { action?: string; feedback?: string };
+        const body = (req.body ?? {}) as {
+            action?: string; feedback?: string; tier?: string; approved_hours?: unknown;
+        };
 
         const action = body.action as ReviewAction;
         if (!['approve', 'reject', 'request_changes'].includes(action ?? '')) {
@@ -159,10 +164,43 @@ function actionHandler(kind: ReviewKind) {
             return reply.code(409).send({ error: 'Already approved' });
         }
 
+        // Approving a PROJECT is a payment, so it cannot happen without a tier and
+        // approved hours. Pitches are just ideas — they're never paid. Request-local:
+        // this must NOT be module state, or two concurrent approvals would clobber it.
+        let payout: { tokens: number; tier: string; hours: number } | null = null;
+        if (kind === 'project' && action === 'approve') {
+            const tier = tierBySlug(body.tier);
+            const hours = Number(body.approved_hours);
+            if (!tier) {
+                return reply.code(400).send({ error: 'Pick a tier before approving' });
+            }
+            if (!Number.isFinite(hours) || hours <= 0 || hours > MAX_HOURS) {
+                return reply.code(400).send({ error: `Approved hours must be between 0 and ${MAX_HOURS}` });
+            }
+            payout = { tokens: computePayout(hours, tier), tier: tier.slug, hours };
+            // Record the assessment before the decision, so the tier/hours are stored
+            // even if the payout half fails and needs a manual retry.
+            await setSubmissionAssessment(id, { tier: tier.slug, approved_hours: hours });
+        }
+
         try {
             const status = await applyReviewAction(
                 kind, row, action, feedback, actorOf(user), req.log,
             );
+
+            // Pay AFTER the status write lands, and awaited — unlike the Slack
+            // side-effects, a failed payout is a real error the reviewer must see.
+            if (payout) {
+                const paid = await payoutSubmission(id, payout.tokens, user.sub);
+                if (!paid.ok) {
+                    req.log.error({ id, err: paid.error }, 'PAYOUT FAILED');
+                    return reply.code(500).send({ error: 'Approved, but the payout failed — tell an admin' });
+                }
+                return {
+                    ok: true, status,
+                    payout: { tokens: paid.tokens, alreadyPaid: paid.alreadyPaid, tier: payout.tier, hours: payout.hours },
+                };
+            }
             return { ok: true, status };
         } catch (err) {
             req.log.error(err, 'review action failed');
@@ -191,6 +229,11 @@ export default async function reviewRoutes(app: FastifyInstance) {
             hasThread: !!(r.slack_channel && r.slack_ts),
             // Current awards, so the panel's chips render pre-toggled.
             badges: Array.isArray(r.badges) ? r.badges : [],
+            // Payout state — prefills the assessment bar and shows what was paid.
+            tier: r.tier ?? null,
+            approved_hours: r.approved_hours ?? null,
+            payout_tokens: r.payout_tokens ?? null,
+            paid_at: r.paid_at ?? null,
             created_at: r.created_at ?? null,
         }));
     });
@@ -281,6 +324,9 @@ export default async function reviewRoutes(app: FastifyInstance) {
             return reply.code(502).send({ error: 'Failed to fetch Slack thread' });
         }
     });
+    
+    app.get('/api/review/tiers', { preHandler: requireRole('reviewer') }, async () => TIERS);
+
 
     app.get('/api/review/:id/github', { preHandler: requireRole('reviewer') }, async (req, reply) => {
         const { id } = req.params as { id: string };

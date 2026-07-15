@@ -21,6 +21,21 @@ const TABLE = {
     yswsSubmissions: "YSWS Project Submission",
 } as const;
 
+export type Assessment = { tier: string; approved_hours: number };
+
+export async function setSubmissionAssessment(id: string, a: Assessment): Promise<Row |null> {
+    return updateRecord(TABLE.projectSubmissions, id, {
+        tier: a.tier,
+        approved_hours: a.approved_hours,
+    });
+}
+
+export type PayoutResult =
+    | { ok: true; tokens: number; alreadyPaid: false }
+    | { ok: true; tokens: number; alreadyPaid: true }
+    | { ok: false; error: string };
+
+
 type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
 export type Row = { id: string } & Record<string, unknown>;
 
@@ -139,6 +154,41 @@ async function deleteRecord(table: string, id: string): Promise<boolean> {
         if ((err as { status?: number }).status === 404) return false;
         throw err;
     }
+}
+
+export async function payoutSubmission(
+    id: string,
+    tokens: number,
+    reviewerSub: string | null,
+): Promise<PayoutResult> {
+    const s = await getSubmissionById(id);
+    if (!s) return { ok: false, error: "Submission not found" };
+
+    // The idempotency guard. `paid_at` is the field we set below; reading anything
+    // else here (there is no `paid` field) would mean the guard never trips and every
+    // retry pays again. A second approve reads paid_at and walks away.
+    if (s.paid_at) return { ok: true, tokens: Number(s.payout_tokens ?? 0), alreadyPaid: true };
+    const sub = String(s.user_sub ?? "");
+    if (!sub) return { ok: false, error: "Submission has no user_sub" };
+
+    // Order matters: CLAIM (write paid_at) before CREDIT. If the process dies between
+    // the two, we've under-paid — a claim with no credit, visible and fixable by hand.
+    // The other order risks paying twice, which isn't recoverable. Fail toward owing.
+    await updateRecord(TABLE.projectSubmissions, id, {
+        payout_tokens: tokens,
+        paid_at: now(),
+    });
+     const res = await adjustUserTokens(
+        sub, tokens, `Omega payout — ${s.title ?? 'project'} (${s.tier ?? '?'})`, reviewerSub,
+    );
+    if (!res.ok) {
+        // The claim stands but the credit failed. Loud, because it needs a human.
+        return { ok: false, error: `PAYOUT CLAIMED BUT NOT CREDITED for ${id}: ${res.error}` };
+    }
+
+    // Return the PAYOUT, not res.tokens — that's the user's new balance, a different
+    // number the reviewer never asked about.
+    return { ok: true, tokens, alreadyPaid: false };
 }
 
 const now = () => new Date().toISOString();

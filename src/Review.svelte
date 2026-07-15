@@ -17,6 +17,10 @@
     hasThread: boolean
     created_at: string | null
     badges?: string[]
+    tier?: string | null
+    approved_hours?: number | null
+    payout_tokens?: number | null
+    paid_at?: string | null
     /** Reviewer-only duplicate-idea verdict. Never sent to the pitch's author. */
     duplicate_check?: {
       checkedAt: string
@@ -41,6 +45,7 @@
   let showReadme = $state(false)
 
   type Badge = { slug: string; label: string; icon: string; criteria: string; bg: string; color: string }
+  type TierDef = { slug: string; label: string; icon: string; multiplier: number; blurb: string; bg: string; color: string }
 
   let catalog = $state<Badge[]>([])
   let awarded = $state<Set<string>>(new Set())
@@ -51,6 +56,10 @@
   let feedback = $state('')
   let actionMsg = $state('')
   let actionErr = $state('')
+  let tiers = $state<TierDef[]>([])
+  let tier = $state<string>('')
+  let hours = $state<number | null>(null)
+  
   type Msg = { ts: string; author: string; text: string; isBot: boolean; isParent: boolean }
 
   // Pitches (the idea) and projects (the build) are reviewed the same way but
@@ -65,6 +74,11 @@
     k === 'pitches' ? `/api/review/pitches/${id}/message` : `/api/review/${id}/message`
   const actionUrl = (k: Kind, id: string) =>
     k === 'pitches' ? `/api/review/pitches/${id}/action` : `/api/review/${id}/action`
+  const chosenTier = $derived(tiers.find((t) => t.slug === tier) ?? null)
+  // Same formula as the server's computePayout, so the preview and the payout agree.
+  const preview = $derived(
+    chosenTier && hours != null && hours > 0 ? Math.round(hours * chosenTier.multiplier) : null)
+  
 
   let subs = $state<Sub[]>([])
   let loading = $state(true)
@@ -158,12 +172,16 @@
       else listErr = 'That item is no longer in this queue.'
     }
 
+    // Badge + tier catalogs. Both non-fatal: the chips / payout multipliers just
+    // don't render if the fetch fails.
     try {
       const r = await fetch('/api/review/badges')
       if (r.ok) catalog = await r.json()
-    } catch {
-      // non-fatal: the chips just don't render
-    }
+    } catch {}
+    try {
+      const r = await fetch('/api/review/tiers')
+      if (r.ok) tiers = await r.json()
+    } catch {}
   })
 
   function toggleBadge(slug: string) {
@@ -229,6 +247,10 @@
     showFeedBack = false
     feedback = ''
     awarded = new Set(s.badges ?? [])   // pre-toggle chips to what's already awarded
+    // Prefill the payout bar: a prior assessment if one exists, else the reviewer
+    // starts from the builder's claimed hours and adjusts.
+    tier = s.tier ?? ''
+    hours = s.approved_hours ?? s.hackatime_hours ?? null
 
     loadCounterpart(kind, s.id)   // independent of the thread; don't await
     loadGithub(s.id)              // no-ops for pitches, which have no repo
@@ -302,21 +324,40 @@
       return
     }
 
+    // Approving a project must carry a tier + hours, or the server rejects it.
+    if (kind === 'projects' && action === 'approve') {
+      if (!tier) { actionErr = 'Pick a tier before approving.'; return }
+      if (hours == null || hours <= 0) { actionErr = 'Enter the approved hours.'; return }
+    }
+
     acting = true
     try {
       const r = await fetch(actionUrl(kind, selected.id), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, feedback: feedback.trim() }),
+        body: JSON.stringify({
+          action,
+          feedback: feedback.trim(),
+          ...(kind === 'projects' && action === 'approve' ? { tier, approved_hours: hours } : {}),
+        }),
       })
       const data = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(data.error ?? 'Action failed')
       selected.status = data.status
       const inList = subs.find((s) => s.id === selected!.id)
       if (inList) inList.status = data.status
+      // Reflect what was just paid, so the bar shows it without a reload.
+      if (data.payout) {
+        selected.tier = data.payout.tier
+        selected.approved_hours = data.payout.hours
+        selected.payout_tokens = data.payout.tokens
+        selected.paid_at = new Date().toISOString()
+      }
       feedback = ''
       showFeedBack = false
-      const msg = `Marked ${data.status.replace('_', ' ')} ✓`
+      const msg = data.payout
+        ? `Approved · paid ${data.payout.tokens} Ω ✓`
+        : `Marked ${data.status.replace('_', ' ')} ✓`
       // open() resets actionMsg, so re-set it after refreshing the thread.
       if (selected.hasThread) await open(selected)
       actionMsg = msg
@@ -564,6 +605,62 @@
             <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--orange); margin-bottom:8px;">
               ⚖ Decision
             </div>
+
+            {#if kind === 'projects'}
+              <div style="margin-bottom:12px; padding:12px 14px; border:2px dashed rgba(28,23,20,.28); border-radius:12px; background:rgba(255,179,71,.07);">
+                <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#b07410; margin-bottom:8px;">
+                  💰 Payout {#if selected.paid_at}· already paid{/if}
+                </div>
+
+                {#if selected.paid_at}
+                  <div style="font-family:'Space Grotesk',sans-serif; font-size:.85rem; color:#5b4f44;">
+                    Paid <strong style="color:#1c1714;">{selected.payout_tokens} Ω</strong>
+                    — {selected.tier} tier × {selected.approved_hours}h. Approving again pays nothing.
+                  </div>
+                {:else}
+                  <div style="display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px;">
+                    {#each tiers as t (t.slug)}
+                      <button
+                        onclick={() => (tier = t.slug)}
+                        title={t.blurb}
+                        style="
+                          cursor:pointer; padding:6px 12px; border:2px solid #1c1714;
+                          border-radius:9px 12px 8px 11px/11px 8px 12px 9px;
+                          font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.78rem;
+                          background:{tier === t.slug ? t.bg : '#fbf4e6'};
+                          color:{tier === t.slug ? t.color : '#5b4f44'};
+                          box-shadow:{tier === t.slug ? '3px 3px 0 #1c1714' : '2px 2px 0 rgba(28,23,20,.18)'};
+                        "
+                      >{t.icon} {t.label} · {t.multiplier}×</button>
+                    {/each}
+                  </div>
+
+                  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <label style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; font-weight:700;">
+                      Approved hours
+                      <input
+                        type="number" min="0" max="500" step="0.5" bind:value={hours}
+                        style="width:90px; margin-left:7px; padding:6px 9px; border:2px solid #1c1714; border-radius:8px; font-family:'Space Grotesk',sans-serif; font-size:.82rem; background:#fbf4e6;"
+                      />
+                    </label>
+
+                    {#if selected.hackatime_hours}
+                      <span style="font-size:.75rem; color:#5b4f44;">claimed: {selected.hackatime_hours}h</span>
+                    {/if}
+
+                    {#if preview !== null}
+                      <span style="font-family:'Syne',sans-serif; font-weight:800; font-size:.95rem; color:#c2451a;">→ {preview} Ω</span>
+                    {/if}
+                  </div>
+
+                  {#if hours !== null && hours > 0 && hours < 20}
+                    <div style="margin-top:8px; font-size:.75rem; color:#b07410; font-weight:700;">
+                      ⚠ Below the 20-hour minimum in the ground rules — approve only if you mean to.
+                    </div>
+                  {/if}
+                {/if}
+              </div>
+            {/if}
 
             {#if showFeedBack}
               <textarea
