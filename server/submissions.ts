@@ -16,6 +16,29 @@ import { checkGithubRepo } from "./github-api.ts";
 
 /** Actions the BUILDER owns. Everything else on a card is a reviewer action. */
 const BUILDER_ACTIONS = new Set(['builder_withdraw', 'builder_reship']);
+const MAX_ACTIVE_SUBMISSIONS = 2;   // per user, at any one time
+const ACTIVE_SUBMISSION_STATUSES = new Set(["pending", "changes_requested"]);
+
+/** The tick drives the description. Ticked → you must say what for. Unticked → the
+ *  description is meaningless, so we don't demand it. A tick with an empty description
+ *  is the one combination we reject: a claim with no substance. Returns an error
+ *  string, or null if valid. */
+function validateAiUsage(b: Partial<SubmissionInput>): string | null {
+    if (b.ai_used === true && String(b.ai_disclosure ?? "").trim() === "") {
+        return "You ticked 'used AI' — say what you used it for";
+    }
+    if (String(b.ai_disclosure ?? "").length > 2000) {
+        return "AI disclosure is too long";
+    }
+    return null;
+}
+
+/** Normalize what actually gets stored: an unticked box must never keep stale text
+ *  from a previous draft. */
+function normalizeAiUsage(b: Partial<SubmissionInput>): { ai_used: boolean; ai_disclosure: string } {
+    const ai_used = b.ai_used === true;
+    return { ai_used, ai_disclosure: ai_used ? String(b.ai_disclosure).trim() : "" };
+}
 
 export default async function submissionRoutes(app: FastifyInstance) {
     app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (req, body, done) => {
@@ -41,16 +64,12 @@ export default async function submissionRoutes(app: FastifyInstance) {
         if (!user) return reply.status(401).send({ error: 'Unauthorized' });
 
         const b = (req.body ?? {}) as Partial<SubmissionInput>;
-        // ai_disclosure is REQUIRED — the landing page promises the field exists, and an
-        // optional one gets skipped by exactly the people we most need to hear from.
-        // "None" is a perfectly valid answer; saying nothing at all is not.
-        const required: (keyof SubmissionInput)[] = ["pitch_id", "title", "code_url", "playable_url", "description", "ai_disclosure"];
+        const required: (keyof SubmissionInput)[] = ["pitch_id", "title", "code_url", "playable_url", "description", "screenshot_url"];
         for (const k of required) {
             if (!b[k] || String(b[k]).trim() === "") return reply.code(400).send({ error: `Missing field: ${k}` });
         }
-        if (String(b.ai_disclosure).length > 2000) {
-            return reply.code(400).send({ error: "AI disclosure is too long" });
-        }
+        const aiErr = validateAiUsage(b);
+        if (aiErr) return reply.code(400).send({ error: aiErr });
 
         // You pitch before you build: a project must fulfil one of YOUR approved pitches.
         // Client-side selection is not trustworthy — re-check ownership and status here.
@@ -76,9 +95,22 @@ export default async function submissionRoutes(app: FastifyInstance) {
         if (b.hackatime_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(b.hackatime_start_date)) {
             return reply.code(400).send({ error: "Hackatime start date must be a YYYY-MM-DD date" });
         }
+        if (b.hackatime_hours !== null && b.hackatime_hours !== undefined && b.hackatime_hours < 20) {
+            return reply.code(400).send({ error: "You need at least 20 hours to submit this project" });
+        }
+
+        const mine = await listSubmissionsBySub(user.sub);
+        const activeCount = mine.filter((s) => ACTIVE_SUBMISSION_STATUSES.has(String(s.status ?? "pending"))).length;
+
+        if (activeCount >= MAX_ACTIVE_SUBMISSIONS) {
+            return reply.code(409).send({ error: `You can only have ${MAX_ACTIVE_SUBMISSIONS} active submissions at a time` });
+        }
+    
 
         try {
-            const row = await createSubmission({ ...(b as SubmissionInput), user_sub: user.sub });
+            const row = await createSubmission({
+                ...(b as SubmissionInput), user_sub: user.sub, ...normalizeAiUsage(b),
+            });
             // Post the review card, persist where it landed so later events can edit it,
             // then drop the builder's own controls into the thread — ephemeral, so only
             // they see them. The row from createSubmission predates the Slack ref, so
@@ -121,15 +153,14 @@ export default async function submissionRoutes(app: FastifyInstance) {
         }
 
         const b = (req.body ?? {}) as Partial<SubmissionInput>;
-        // A reship can change the code, so it can change the AI story too — re-require it
+        // A reship can change the code, so it can change the AI story too — re-ask
         // rather than silently carrying the old answer forward.
-        const required: (keyof SubmissionInput)[] = ["title", "code_url", "playable_url", "description", "ai_disclosure"];
+        const required: (keyof SubmissionInput)[] = ["title", "code_url", "playable_url", "description", "screenshot_url"];
         for (const k of required) {
             if (!b[k] || String(b[k]).trim() === "") return reply.code(400).send({ error: `Missing field: ${k}` });
         }
-        if (String(b.ai_disclosure).length > 2000) {
-            return reply.code(400).send({ error: "AI disclosure is too long" });
-        }
+        const aiErr = validateAiUsage(b);
+        if (aiErr) return reply.code(400).send({ error: aiErr });
         if (b.demo_video_url && !/^https:\/\//i.test(b.demo_video_url.trim())) {
             return reply.code(400).send({ error: "Demo video URL must be an https link" });
         }
@@ -137,7 +168,7 @@ export default async function submissionRoutes(app: FastifyInstance) {
         const patch = {
             title: b.title, code_url: b.code_url, playable_url: b.playable_url,
             description: b.description, screenshot_url: b.screenshot_url, demo_video_url: b.demo_video_url,
-            ai_disclosure: b.ai_disclosure,
+            ...normalizeAiUsage(b),
         };
         const updated = await resubmitSubmission(id, patch);
         if (!updated) return reply.code(500).send({ error: 'Update failed' });

@@ -49,21 +49,30 @@ async function applyReviewAction(
     kind: ReviewKind,
     row: Row,
     action: ReviewAction,
-    feedback: string,
+    userFeedback: string,
+    internalJustification: string,
     actor: Actor,
     log: FastifyBaseLogger,
+    approval?: { approvedHours?: number; tier?: string },
 ): Promise<SubmissionState> {
     const id = String(row.id);
     const isPitch = kind === 'pitch';
+    const publicNote = String(userFeedback ?? '').trim();
+    const privateNote = String(internalJustification ?? '').trim();
 
     // 1. Persist — the part that must succeed.
     if (action === 'request_changes') {
-        if (isPitch) await requestPitchChanges(id, actor.name, feedback);
-        else await requestSubmissionChanges(id, actor.name, feedback);
+        if (isPitch) await requestPitchChanges(id, actor.name, publicNote);
+        else await requestSubmissionChanges(id, actor.name, publicNote);
     } else if (action === 'approve') {
         // approveSubmission also promotes the row into the YSWS table.
         if (isPitch) await approvePitch(id, actor.name);
-        else await approveSubmission(id, actor.name);
+        else await approveSubmission(id, actor.name, {
+            approvedHours: approval?.approvedHours,
+            tier: approval?.tier,
+            overrideHourJustification: privateNote,
+            userFeedback: publicNote,
+        });
     } else {
         if (isPitch) await rejectPitch(id, actor.name);
         else await rejectSubmission(id, actor.name);
@@ -85,8 +94,8 @@ async function applyReviewAction(
                 if (fresh) await updateReviewCard(kind, ch, ts, fresh, state, actor.slackId ?? undefined );
 
                 const note = action === 'request_changes'
-                    ? `✏️ ${mention(actor)} requested changes:\n>${feedback.replace(/\n/g, '\n>')}`
-                    : `${action === 'approve' ? '✅' : '❌'} ${mention(actor)} ${state} this from the platform.`;
+                    ? `✏️ ${mention(actor)} requested changes:\n>${publicNote.replace(/\n/g, '\n>')}`
+                    : `${action === 'approve' ? '✅' : '❌'} ${mention(actor)} ${state} this from the platform.${publicNote ? `\n\n>${publicNote.replace(/\n/g, '\n>')}` : ''}`;
                 await postInThread(ch, ts, note);
             }
 
@@ -109,13 +118,15 @@ async function applyReviewAction(
             let dm: string;
             if (action === 'request_changes') {
                 const link = isPitch ? pitchEditLink(id) : editLink(id);
-                dm = `${mention(actor)} asked for changes on your Omega ${label} *${row.title}*:\n\n>${feedback.replace(/\n/g, '\n>')}\n\nReship it here: ${link}`;
+                dm = `${mention(actor)} asked for changes on your Omega ${label} *${row.title}*:\n\n>${publicNote.replace(/\n/g, '\n>')}\n\nReship it here: ${link}`;
             } else if (action === 'approve') {
+                const extra = publicNote ? `\n\n>${publicNote.replace(/\n/g, '\n>')}` : '';
                 dm = isPitch
-                    ? `💡 Your Omega pitch *${row.title}* was approved by ${mention(actor)} — start building! Submit the finished project: ${frontendUrl()}/submit`
-                    : `🎉 Your Omega submission *${row.title}* was approved by ${mention(actor)}!`;
+                    ? `💡 Your Omega pitch *${row.title}* was approved by ${mention(actor)} — start building! Submit the finished project: ${frontendUrl()}/submit${extra}`
+                    : `🎉 Your Omega submission *${row.title}* was approved by ${mention(actor)}!${extra}`;
             } else {
-                dm = `Your Omega ${label} *${row.title}* was rejected by ${mention(actor)}. Ask in #omega if you'd like context.`;
+                const extra = publicNote ? `\n\n>${publicNote.replace(/\n/g, '\n>')}` : '';
+                dm = `Your Omega ${label} *${row.title}* was rejected by ${mention(actor)}. Ask in #omega if you'd like context.${extra}`;
             }
             await dmUser(slackId, dm);
         } catch (err) {
@@ -139,7 +150,7 @@ function actionHandler(kind: ReviewKind) {
         const user = getSessionUser(req)!;   // requireRole guarantees a session
         const { id } = req.params as { id: string };
         const body = (req.body ?? {}) as {
-            action?: string; feedback?: string; tier?: string; approved_hours?: unknown;
+            action?: string; feedback?: string; user_feedback?: string; internal_justification?: string; tier?: string; approved_hours?: unknown;
         };
 
         const action = body.action as ReviewAction;
@@ -147,13 +158,17 @@ function actionHandler(kind: ReviewKind) {
             return reply.code(400).send({ error: 'Unknown action' });
         }
 
-        const feedback = String(body.feedback ?? '').trim();
+        const userFeedback = String(body.user_feedback ?? body.feedback ?? '').trim();
+        const internalJustification = String(body.internal_justification ?? '').trim();
         // Sending someone back with no explanation is the worst possible UX.
-        if (action === 'request_changes' && !feedback) {
+        if (action === 'request_changes' && !userFeedback) {
             return reply.code(400).send({ error: 'Describe what needs to change' });
         }
-        if (feedback.length > 4000) {
+        if (userFeedback.length > 4000) {
             return reply.code(400).send({ error: 'Feedback is too long' });
+        }
+        if (internalJustification.length > 4000) {
+            return reply.code(400).send({ error: 'Internal justification is too long' });
         }
 
         const row = kind === 'pitch' ? await getPitchById(id) : await getSubmissionById(id);
@@ -177,6 +192,9 @@ function actionHandler(kind: ReviewKind) {
             if (!Number.isFinite(hours) || hours <= 0 || hours > MAX_HOURS) {
                 return reply.code(400).send({ error: `Approved hours must be between 0 and ${MAX_HOURS}` });
             }
+            if (!internalJustification) {
+                return reply.code(400).send({ error: 'Add an internal override justification' });
+            }
             payout = { tokens: computePayout(hours, tier), tier: tier.slug, hours };
             // Record the assessment before the decision, so the tier/hours are stored
             // even if the payout half fails and needs a manual retry.
@@ -185,7 +203,8 @@ function actionHandler(kind: ReviewKind) {
 
         try {
             const status = await applyReviewAction(
-                kind, row, action, feedback, actorOf(user), req.log,
+                kind, row, action, userFeedback, internalJustification, actorOf(user), req.log,
+                kind === 'project' && action === 'approve' && payout ? { approvedHours: payout.hours, tier: payout.tier } : undefined,
             );
 
             // Pay AFTER the status write lands, and awaited — unlike the Slack
@@ -220,6 +239,9 @@ export default async function reviewRoutes(app: FastifyInstance) {
             status: r.status,
             code_url: r.code_url ?? null,
             demo_video_url: r.demo_video_url ?? null,
+            // undefined for rows created before the tick existed — the panel shows
+            // "predates the question" rather than a misleading "no AI".
+            ai_used: r.ai_used === undefined ? null : !!r.ai_used,
             ai_disclosure: r.ai_disclosure ?? null,
             description: r.description ?? null,
             playable_url: r.playable_url ?? null,

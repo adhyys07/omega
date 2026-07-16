@@ -46,12 +46,22 @@
   })
 
   // --- Hackatime ---
-  type HtProject = { name?: string; text?: string; total_seconds?: number }
+  type HtProject = { name?: string; text?: string; total_seconds?: number; first_heartbeat?: string | null }
   let htProjects = $state<HtProject[]>([])
   let htLoaded = $state(false)
   let htLoading = $state(false)
   let htLinked = $state(true)   // flips false on a 404 (token not stored yet)
   let htError = $state(false)
+
+  const PROJECTS_SINCE = '2026-07-27'
+  const PROJECTS_SINCE_LABEL = new Date(`${PROJECTS_SINCE}T00:00:00`).toLocaleDateString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric',
+  })
+  const fmtProjectDate = (iso?: string | null) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
 
   async function loadHackatimeProjects() {
     htLoading = true
@@ -220,7 +230,7 @@
   const rules = [
     { lead: 'No double dipping.', rest: ' Omega submissions cannot count toward any other YSWS program. No exceptions.', last: false },
     { lead: '20 hours minimum per project.', rest: ' Hackatime logs required. Reviewers verify every session.', last: false },
-    { lead: 'Max 3 projects', rest: ' per participant over the two-month window.', last: false },
+    { lead: 'Max 2 projects', rest: ' per participant over the two-month window.', last: false },
     { lead: 'AI is allowed — but declare it.', rest: ' Copilot, Claude, Cursor, whatever helps you ship. The idea, the architecture, and the understanding have to be yours, and you tell us what you used it for when you submit. Undeclared AI is what gets you rejected — not AI.', last: false },
     { lead: 'Fraud = ban.', rest: ' Fulfillment cancelled, case sent to the Hack Club fraud team. Severity determines the ban length.', last: true },
   ]
@@ -331,11 +341,22 @@
           {#if !htLinked}
             <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#5b4f44; padding:2px 4px;">Not linked yet — hit “Connect Hackatime” first.</div>
           {:else if htProjects.length}
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#5b4f44; padding:2px 4px 6px;">
+              Showing projects started on or after <strong>{PROJECTS_SINCE_LABEL}</strong>.
+            </div>
             <div style="max-height:180px; overflow:auto; display:flex; flex-direction:column; gap:4px; border-top:2px dashed #1c1714; padding-top:8px;">
               {#each htProjects as p}
-                <div style="display:flex; justify-content:space-between; gap:10px; font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#1c1714;">
-                  <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{p.name ?? 'Untitled'}</span>
-                  <span style="color:#5b4f44; flex:none;">{p.text ?? fmtHours(p.total_seconds)}</span>
+                <div style="display:grid; gap:2px; font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#1c1714; padding:2px 0;">
+                  <div style="display:flex; justify-content:space-between; gap:10px;">
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{p.name ?? 'Untitled'}</span>
+                    <span style="color:#5b4f44; flex:none;">{p.text ?? fmtHours(p.total_seconds)}</span>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; gap:10px; font-size:.68rem; color:#5b4f44;">
+                    <span>{p.first_heartbeat ? `Started ${fmtProjectDate(p.first_heartbeat)}` : 'No start date'}</span>
+                    {#if (p.total_seconds ?? 0) < 20 * 60 * 60}
+                      <span style="color:#b07410; font-weight:700;">Need 20h to submit</span>
+                    {/if}
+                  </div>
                 </div>
               {/each}
             </div>
@@ -458,7 +479,7 @@
       <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; font-weight:700; font-size:.8rem; background:rgba(255,107,53,.14); color:#c2451a; transform:rotate(-1deg);">▲ Android app</span>
       <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-weight:700; font-size:.8rem; background:rgba(255,107,53,.14); color:#c2451a; transform:rotate(.8deg);">◉ iOS app</span>
       <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; font-weight:700; font-size:.8rem; background:rgba(47,109,176,.13); color:#2f6db0; transform:rotate(-.6deg);">◷ 20+ hrs each</span>
-      <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-weight:700; font-size:.8rem; background:rgba(47,109,176,.13); color:#2f6db0; transform:rotate(1deg);">❥ Max 3 projects</span>
+      <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-weight:700; font-size:.8rem; background:rgba(47,109,176,.13); color:#2f6db0; transform:rotate(1deg);">❥ Max 2 projects</span>
     </div>
 
     <div style="display:flex; flex-direction:column;">

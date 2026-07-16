@@ -349,98 +349,104 @@
         </div>
       {/if}
 
-      <input bind:value={f.title} placeholder="Project title" required style={inputStyle} />
+      <div class="form-split">
+        <div class="form-col">
+          <input bind:value={f.title} placeholder="Project title" required style={inputStyle} />
 
-      {#if !htLinked}
-        <a
-          href="/api/hackatime/login"
-          style="display:inline-flex; align-items:center; gap:6px; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; padding:13px 15px; font-weight:700; text-decoration:none; box-shadow:4px 4px 0 #1c1714;"
-        >⏱ Connect Hackatime to pick a project</a>
-      {:else if projectsLoaded && projects.length}
-        <select bind:value={f.hackatime_project} onchange={onProjectChange} required style={inputStyle}>
-          <option value="" disabled selected>Select your Hackatime project</option>
-          {#each projects as p}
-            <option value={p.name}>
-              {p.name}{p.total_seconds ? ` — ${Math.round(p.total_seconds / 3600 * 10) / 10}h` : ''}
-            </option>
-          {/each}
-        </select>
-        {#if f.hackatime_start_date}
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44; margin-top:-4px;">
-            ⏳ Started on <strong>{formatStartDate(f.hackatime_start_date)}</strong>
-          </div>
-        {/if}
-      {:else if projectsLoaded}
-        <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44;">
-          No Hackatime projects found — you can still submit without selecting one.
-        </div>
-      {/if}
-
-      <div class="row">
-        <input bind:value={f.code_url} onblur={checkRepo} type="url" placeholder="Code URL (repository)" required style={inputStyle} />
-        <input bind:value={f.playable_url} type="url" placeholder="Playable / demo URL" required style={inputStyle} />
-      </div>
-
-      {#if ghChecking}
-        <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; margin-top:-6px;">Checking repo…</div>
-      {:else if ghCheck}
-        {#if ghCheck.host === 'other'}
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; margin-top:-6px;">Not a GitHub URL — reviewers will open it manually.</div>
-        {:else if ghCheck.error}
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Couldn't verify: {ghCheck.error}</div>
-        {:else if !ghCheck.isPublic}
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b3261e; font-weight:700; margin-top:-6px;">❌ This repo isn't public — reviewers won't be able to open it.</div>
-        {:else if ghCheck.readme && !ghCheck.readme.found}
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Public, but no README found. Reviewers rely on it.</div>
-        {:else if ghCheck.readme && ghCheck.readme.tooSmall}
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Public ✓ — but the README looks thin ({ghCheck.readme.chars} chars). Consider expanding it.</div>
-        {:else}
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#3d7a40; font-weight:700; margin-top:-6px;">✓ Public repo with a README.</div>
-        {/if}
-      {/if}
-
-      <textarea bind:value={f.description} placeholder="Describe what you built" rows="3" required class="description" style={inputStyle}></textarea>
-
-      <div class="row">
-        <div class="field">
-          <input bind:value={f.screenshot_url} type="url" placeholder="Screenshot URL" style={inputStyle} />
-          <label style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
-            {uploading === 'screenshot_url' ? 'Uploading screenshot…' : '⬆ or upload a screenshot'}
-            <input type="file" accept={ACCEPT.screenshot_url} disabled={busy} onchange={(e) => uploadMedia(e, 'screenshot_url')} style="display:none;" />
-          </label>
-        </div>
-
-        <div class="field">
-          <input bind:value={f.demo_video_url} type="url" placeholder="Demo video URL (optional)" style={inputStyle} />
-          <label style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
-            {#if compressing}
-              Compressing video… {Math.round(compressProgress * 100)}%
-            {:else if uploading === 'demo_video_url'}
-              Uploading video…
-            {:else}
-              ⬆ or upload a video (max 64MB)
+          {#if !htLinked}
+            <a
+              href="/api/hackatime/login"
+              style="display:inline-flex; align-items:center; gap:6px; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; padding:13px 15px; font-weight:700; text-decoration:none; box-shadow:4px 4px 0 #1c1714;"
+            >⏱ Connect Hackatime to pick a project</a>
+          {:else if projectsLoaded && projects.length}
+            <select bind:value={f.hackatime_project} onchange={onProjectChange} required style={inputStyle}>
+              <option value="" disabled selected>Select your Hackatime project</option>
+              {#each projects as p}
+                <option value={p.name}>
+                  {p.name}{p.total_seconds ? ` — ${Math.round(p.total_seconds / 3600 * 10) / 10}h` : ''}
+                </option>
+              {/each}
+            </select>
+            {#if f.hackatime_start_date}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44; margin-top:-4px;">
+                ⏳ Started on <strong>{formatStartDate(f.hackatime_start_date)}</strong>
+              </div>
             {/if}
-            <input type="file" accept={ACCEPT.demo_video_url} disabled={busy} onchange={(e) => uploadMedia(e, 'demo_video_url')} style="display:none;" />
-          </label>
+          {:else if projectsLoaded}
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44;">
+              No Hackatime projects found — you can still submit without selecting one.
+            </div>
+          {/if}
+
+          <div class="field">
+            <input bind:value={f.screenshot_url} type="url" placeholder="Screenshot URL" style={inputStyle} />
+            <label style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
+              {uploading === 'screenshot_url' ? 'Uploading screenshot…' : '⬆ or upload a screenshot'}
+              <input type="file" accept={ACCEPT.screenshot_url} disabled={busy} onchange={(e) => uploadMedia(e, 'screenshot_url')} style="display:none;" />
+            </label>
+          </div>
+
+          <div class="field">
+            <input bind:value={f.demo_video_url} type="url" placeholder="Demo video URL (optional)" style={inputStyle} />
+            <label style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
+              {#if compressing}
+                Compressing video… {Math.round(compressProgress * 100)}%
+              {:else if uploading === 'demo_video_url'}
+                Uploading video…
+              {:else}
+                ⬆ or upload a video (max 64MB)
+              {/if}
+              <input type="file" accept={ACCEPT.demo_video_url} disabled={busy} onchange={(e) => uploadMedia(e, 'demo_video_url')} style="display:none;" />
+            </label>
+          </div>
         </div>
 
-        <!-- AI disclosure. Required, and the placeholder models a GOOD answer on purpose:
-             "be specific" is useless advice without an example of what specific looks like. -->
-        <div class="field">
-          <label for="ai_disclosure" style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#1c1714; margin-bottom:6px;">
-            🤖 What did you use AI for? <span style="color:var(--orange);">*</span>
-          </label>
-          <textarea
-            id="ai_disclosure"
-            bind:value={f.ai_disclosure}
-            rows="3"
-            required
-            placeholder={'e.g. "Used Claude to debug my Room database migrations and generate the settings screen boilerplate. Wrote the sync engine and UI myself."\n\nDidn\'t use any? Just write "None".'}
-            style={inputStyle}
-          ></textarea>
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; line-height:1.5; margin-top:2px;">
-            AI is allowed — hiding it isn't. Be specific and honest; an honest disclosure has never
-            cost anyone an approval. You should be able to explain any code you ship.
+        <div class="form-col">
+          <div class="url-row">
+            <div class="field url-code">
+              <input bind:value={f.code_url} onblur={checkRepo} type="url" placeholder="Code URL (repository)" required style={inputStyle} />
+            </div>
+
+            <div class="field url-demo">
+              <input bind:value={f.playable_url} type="url" placeholder="Playable / demo URL" required style={inputStyle} />
+            </div>
+          </div>
+
+          {#if ghChecking}
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; margin-top:-6px;">Checking repo…</div>
+          {:else if ghCheck}
+            {#if ghCheck.host === 'other'}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; margin-top:-6px;">Not a GitHub URL — reviewers will open it manually.</div>
+            {:else if ghCheck.error}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Couldn't verify: {ghCheck.error}</div>
+            {:else if !ghCheck.isPublic}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b3261e; font-weight:700; margin-top:-6px;">❌ This repo isn't public — reviewers won't be able to open it.</div>
+            {:else if ghCheck.readme && !ghCheck.readme.found}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Public, but no README found. Reviewers rely on it.</div>
+            {:else if ghCheck.readme && ghCheck.readme.tooSmall}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Public ✓ — but the README looks thin ({ghCheck.readme.chars} chars). Consider expanding it.</div>
+            {:else}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#3d7a40; font-weight:700; margin-top:-6px;">✓ Public repo with a README.</div>
+            {/if}
+          {/if}
+
+          <textarea bind:value={f.description} placeholder="Describe what you built" rows="3" required class="description" style={inputStyle}></textarea>
+
+          <div class="ai-block">
+            <label for="ai_disclosure" style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#1c1714; margin-bottom:4px;">
+              🤖 AI use <span style="color:var(--orange);">*</span>
+            </label>
+            <textarea
+              id="ai_disclosure"
+              bind:value={f.ai_disclosure}
+              rows="2"
+              required
+              placeholder={'e.g. "Used Claude for debugging and boilerplate. Wrote the actual app logic myself."\n\nDidn\'t use any? Just write "None".'}
+              style={inputStyle}
+            ></textarea>
+            <div class="ai-help" style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44;">
+              Keep it short and specific.
+            </div>
           </div>
         </div>
       </div>
@@ -464,7 +470,7 @@
       <aside class="pane">
         <div style="background:#fbf4e6; border:3px solid #1c1714; border-radius:18px 12px 16px 13px/13px 16px 12px 18px; box-shadow:7px 7px 0 #1c1714; padding:24px;">
           <h2 style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.15rem; color:#1c1714; margin:0 0 4px;">Your projects</h2>
-          <p style="font-family:'Space Grotesk',sans-serif; font-size:.78rem; color:#5b4f44; margin:0 0 16px;">
+          <p style="font-family:'Space Grotesk',sans-serif; font-size:.78rem; color:#5b4f44; margin:0 0 14px;">
             {submissions.length} of 3 submitted
           </p>
 
@@ -572,11 +578,11 @@
 
   .submit-grid {
     display: grid;
-    grid-template-columns: minmax(0, 720px) minmax(0, 420px);
-    gap: 28px;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.62fr);
+    gap: 24px;
     align-items: start;
     width: 100%;
-    max-width: 1220px;
+    max-width: 1320px;
     /* the form pane stretches to this; the textarea absorbs whatever is left over.
        96px = .submit-page's 72px top + 24px bottom padding */
     min-height: calc(100svh - 96px);
@@ -585,6 +591,7 @@
   /* the cards cast a 7px offset shadow — without this it clips at the edges */
   .pane {
     padding: 4px 10px 10px 4px;
+    overflow: visible;
   }
 
   .pane-form {
@@ -596,23 +603,29 @@
     flex: 1;
   }
 
+  .form-split {
+    display: grid;
+    grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .form-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .pane-form > form {
+    width: 100%;
+    max-width: 100%;
+  }
+
   /* Grows into the leftover vertical space on tall screens; `rows` is the floor. */
   .description {
     flex: 1;
     resize: vertical;
-  }
-
-  /* Paired fields, so the form stays short enough to fit the viewport. */
-  .row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-
-  /* inputs have an intrinsic default width that would overflow the grid track */
-  .row :global(input) {
-    width: 100%;
-    min-width: 0;
   }
 
   .field {
@@ -620,6 +633,36 @@
     flex-direction: column;
     gap: 6px;
     min-width: 0;
+  }
+
+  .url-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+  }
+
+  .url-code,
+  .url-demo {
+    min-width: 0;
+  }
+
+  .field :global(input),
+  .field :global(textarea) {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ai-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .ai-help {
+    margin-top: 0;
+    line-height: 1.35;
   }
 
   @media (max-width: 900px) {
@@ -635,11 +678,12 @@
     .pane-form {
       display: block;
     }
-  }
-
-  @media (max-width: 520px) {
-    .row {
+    .form-split {
+      grid-template-columns: 1fr;
+    }
+    .url-row {
       grid-template-columns: 1fr;
     }
   }
+
 </style>

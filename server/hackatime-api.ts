@@ -3,8 +3,11 @@
 
 const BASE = process.env.HACKATIME_BASE_URL || "https://hackatime.hackclub.com";
 
+const PROJECTS_SINCE = process.env.HACKATIME_PROJECTS_SINCE || "2026-07-27";
+
 // The project-details stats window defaults to the last year server-side, which would
-// clamp `first_heartbeat` for anything older. Ask for the full history instead.
+// clamp `first_heartbeat` for anything older. Ask for the full history, then filter
+// to the Omega window in this helper so every caller sees the same list.
 // `end_date` is deliberately omitted: it parses as midnight, which would drop today's
 // heartbeats (and any project started today). Unset, it defaults to now.
 const EPOCH_START = "2015-01-01";
@@ -31,7 +34,12 @@ export async function fetchHackatimeProjectDetails(accessToken: string): Promise
         throw new Error(`Failed to fetch Hackatime project details: ${res.status} ${res.statusText}`);
     }
     const data = (await res.json()) as { projects?: HackatimeProject[] };
-    return data.projects ?? [];
+    const cutoff = new Date(`${PROJECTS_SINCE}T00:00:00`).getTime();
+    return (data.projects ?? []).filter((project) => {
+        if (!project.first_heartbeat) return false;
+        const started = new Date(project.first_heartbeat).getTime();
+        return Number.isFinite(started) && started >= cutoff;
+    });
 }
 
 /** Fetch the user's Hackatime trust level (e.g. "red", "yellow", "green", "blue").

@@ -10,6 +10,7 @@ import {
 import { aiEnabled, findDuplicates, shortlist, type DuplicateCheck } from "./ai.ts";
 
 const MAX_LEN = 4000;
+const MAX_PITCH_PER_USER = 3;   // per user, at any one time
 
 /** Flags duplicate ideas for REVIEWERS ONLY — the verdict is stored on the pitch
  *  (absent from the author-facing projection) and commented into the review-channel
@@ -76,6 +77,11 @@ export default async function pitchRoutes(app: FastifyInstance) {
             if (String(b[k]).length > MAX_LEN) {
                 return reply.code(400).send({ error: `${k} is too long` });
             }
+        }
+
+        const myPitches = await listPitchesBySub(user.sub);
+        if (myPitches.length >= MAX_PITCH_PER_USER) {
+            return reply.code(409).send({ error: `You can only have ${MAX_PITCH_PER_USER} pitches at a time` });
         }
 
         try {

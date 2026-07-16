@@ -10,6 +10,7 @@
     code_url: string | null
     playable_url?: string | null
     demo_video_url?: string | null
+    ai_used?: boolean | null
     ai_disclosure?: string | null
     hackatime_hours: number | null
     description?: string | null
@@ -39,6 +40,10 @@
     error?: string
   }
 
+  const apiFetch = (input: string, init: RequestInit = {}) =>
+    fetch(input, { credentials: 'include', ...init })
+
+
   let gh = $state<{ check: GhCheck | null; readme: Readme | null } | null>(null)
 
   let loadingGh = $state(false)
@@ -54,6 +59,7 @@
   let acting = $state(false)
   let showFeedBack = $state(false)
   let feedback = $state('')
+  let internalJustification = $state('')
   let actionMsg = $state('')
   let actionErr = $state('')
   let tiers = $state<TierDef[]>([])
@@ -221,7 +227,7 @@
     selected = null
     messages = []
     try {
-      const r = await fetch(listUrl(kind))
+      const r = await apiFetch(listUrl(kind))
       if (!r.ok) throw new Error()
       subs = await r.json()
     } catch {
@@ -246,6 +252,7 @@
     actionErr = ''
     showFeedBack = false
     feedback = ''
+    internalJustification = ''
     awarded = new Set(s.badges ?? [])   // pre-toggle chips to what's already awarded
     // Prefill the payout bar: a prior assessment if one exists, else the reviewer
     // starts from the builder's claimed hours and adjusts.
@@ -258,7 +265,7 @@
     if (!s.hasThread) return
     loadingThread = true
     try {
-      const r = await fetch(threadUrl(kind, s.id))
+      const r = await apiFetch(threadUrl(kind, s.id))
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Could not load the thread')
       const data = await r.json()
       messages = data.messages ?? []
@@ -275,7 +282,7 @@
     linkedReason = ''
     loadingLink = true
     try {
-      const r = await fetch(linkUrl(k, id))
+      const r = await apiFetch(linkUrl(k, id))
       if (!r.ok) throw new Error('lookup failed')
       const data = await r.json()
       // A stale response from a previously-selected row must not overwrite the
@@ -296,7 +303,7 @@
     if (kind != 'projects') return
     loadingGh = true
     try {
-      const r = await fetch(`/api/review/${id}/github`)
+      const r = await apiFetch(`/api/review/${id}/github`)
       if (!r.ok) throw new Error('lookup failed')
       const data = await r.json()
       if (selected?.id !== id) return        // stale response — user moved on
@@ -328,16 +335,19 @@
     if (kind === 'projects' && action === 'approve') {
       if (!tier) { actionErr = 'Pick a tier before approving.'; return }
       if (hours == null || hours <= 0) { actionErr = 'Enter the approved hours.'; return }
+      if (!internalJustification.trim()) { actionErr = 'Enter the override-hour justification.'; return }
     }
 
     acting = true
     try {
-      const r = await fetch(actionUrl(kind, selected.id), {
+      const r = await apiFetch(actionUrl(kind, selected.id), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
           feedback: feedback.trim(),
+          user_feedback: feedback.trim(),
+          internal_justification: internalJustification.trim(),
           ...(kind === 'projects' && action === 'approve' ? { tier, approved_hours: hours } : {}),
         }),
       })
@@ -354,6 +364,7 @@
         selected.paid_at = new Date().toISOString()
       }
       feedback = ''
+      internalJustification = ''
       showFeedBack = false
       const msg = data.payout
         ? `Approved · paid ${data.payout.tokens} Ω ✓`
@@ -373,7 +384,7 @@
     sending = true
     err = ''
     try {
-      const r = await fetch(messageUrl(kind, selected.id), {
+      const r = await apiFetch(messageUrl(kind, selected.id), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, dmSubmitter }),
@@ -534,20 +545,28 @@
           {/if}
         {/if}
 
-        <!-- AI disclosure. Shown for projects only; pitches have no code yet. -->
+        <!-- AI usage. Shown for projects only; pitches have no code yet. -->
         {#if kind === 'projects'}
           <div style="padding:12px 16px; border-bottom:2px dashed rgba(28,23,20,.28);">
             <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--orange); margin-bottom:6px;">
-              🤖 AI disclosure
+              🤖 AI usage
             </div>
-            {#if selected.ai_disclosure}
+            <!-- Airtable stores an unchecked box as ABSENT, so a new unticked row and
+                 an old pre-tick row both arrive with ai_used null. We tell them apart by
+                 the disclosure: pre-tick rows always carried a (then-required) one. -->
+            {#if selected.ai_used}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#2f6db0; margin-bottom:4px;">✓ Used AI</div>
+              {#if selected.ai_disclosure}
+                <p style="margin:0; font-family:'Space Grotesk',sans-serif; font-size:.85rem; line-height:1.6; color:#5b4f44; white-space:pre-wrap;">{selected.ai_disclosure}</p>
+              {:else}
+                <p style="margin:0; font-family:'Space Grotesk',sans-serif; font-size:.82rem; color:#b3261e; font-weight:700;">⚠ Ticked AI but gave no description.</p>
+              {/if}
+            {:else if selected.ai_disclosure}
+              <!-- No tick but a disclosure exists → a pre-tick row. Show what they wrote. -->
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#b07410; margin-bottom:4px;">predates the tick</div>
               <p style="margin:0; font-family:'Space Grotesk',sans-serif; font-size:.85rem; line-height:1.6; color:#5b4f44; white-space:pre-wrap;">{selected.ai_disclosure}</p>
             {:else}
-              <!-- Required since the policy shipped, so a blank one means the row predates
-                   it — not that the builder refused to answer. Don't imply bad faith. -->
-              <p style="margin:0; font-family:'Space Grotesk',sans-serif; font-size:.82rem; color:#b07410;">
-                None given — this submission predates the AI disclosure policy.
-              </p>
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.82rem; color:#5b4f44;">No AI declared.</div>
             {/if}
           </div>
         {/if}
@@ -662,13 +681,38 @@
               </div>
             {/if}
 
-            {#if showFeedBack}
+            {#if kind === 'projects' && (selected.status === 'pending' || selected.status === 'changes_requested')}
+              <div style="margin-bottom:10px; display:grid; gap:10px;">
+                <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#1c1714;">
+                  User feedback
+                  <textarea
+                    bind:value={feedback}
+                    placeholder="Shown to the builder and sent in the DM."
+                    rows="3"
+                    style="width:100%; box-sizing:border-box; margin-top:6px; padding:11px 13px; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.85rem; background:#fbf4e6; color:#1c1714; outline:none; box-shadow:3px 3px 0 #1c1714; resize:vertical;"
+                  ></textarea>
+                </label>
+
+                <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#1c1714;">
+                  Internal override justification
+                  <textarea
+                    bind:value={internalJustification}
+                    placeholder="Why these hours were overridden. Stored with the YSWS submission only."
+                    rows="3"
+                    style="width:100%; box-sizing:border-box; margin-top:6px; padding:11px 13px; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.85rem; background:#fbf4e6; color:#1c1714; outline:none; box-shadow:3px 3px 0 #1c1714; resize:vertical;"
+                  ></textarea>
+                </label>
+              </div>
+            {:else if showFeedBack}
+              <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#1c1714; margin-bottom:10px;">
+                User feedback
               <textarea
                 bind:value={feedback}
                 placeholder="What needs to change? This is sent to the builder verbatim."
                 rows="3"
                 style="width:100%; box-sizing:border-box; padding:11px 13px; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.85rem; background:#fbf4e6; color:#1c1714; outline:none; box-shadow:3px 3px 0 #1c1714; resize:vertical; margin-bottom:10px;"
               ></textarea>
+              </label>
             {/if}
 
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">

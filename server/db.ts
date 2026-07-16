@@ -23,6 +23,13 @@ const TABLE = {
 
 export type Assessment = { tier: string; approved_hours: number };
 
+export type ApprovalSubmissionOptions = {
+    approvedHours?: number;
+    tier?: string;
+    overrideHourJustification?: string;
+    userFeedback?: string;
+};
+
 export async function setSubmissionAssessment(id: string, a: Assessment): Promise<Row |null> {
     return updateRecord(TABLE.projectSubmissions, id, {
         tier: a.tier,
@@ -483,8 +490,9 @@ export type SubmissionInput = {
     description: string;
     screenshot_url?: string;
     demo_video_url?: string;
-    /** What the builder used AI for. Required by the route; "None" is a valid answer.
-     *  The landing page promises this field exists — see the AI policy section. */
+    /** Did the builder use AI at all? Drives whether ai_disclosure is required. */
+    ai_used?: boolean;
+    /** What they used AI for. Required only when ai_used is true; empty otherwise. */
     ai_disclosure?: string;
     hackatime_project?: string;
     hackatime_hours?: number | null;
@@ -510,6 +518,7 @@ export async function createSubmission(input: SubmissionInput): Promise<Row> {
         description: input.description,
         screenshot_url: input.screenshot_url ?? "",
         demo_video_url: input.demo_video_url ?? "",
+        ai_used: input.ai_used ?? false,
         ai_disclosure: input.ai_disclosure ?? "",
         hackatime_project: input.hackatime_project ?? null,
 
@@ -558,6 +567,7 @@ export async function listSubmissionsBySub(sub: string): Promise<Row[]> {
         description: r.description ?? null,
         screenshot_url: r.screenshot_url ?? null,
         demo_video_url: r.demo_video_url ?? null,
+        ai_used: bool(r.ai_used),
         ai_disclosure: r.ai_disclosure ?? null,
         badges: Array.isArray(r.badges) ? r.badges : [],
         created_at: r.created_at ?? null,
@@ -595,10 +605,15 @@ export async function withdrawPitch(id: string): Promise<void> {
     });
 }
 
-export async function approveSubmission(id: string, reviewer?: string): Promise<Row | null> {
+export async function approveSubmission(id: string, reviewer?: string, options: ApprovalSubmissionOptions = {}): Promise<Row | null> {
     const s = await getSubmissionById(id);
     if (!s) return null;
     if (s.status === "approved") return s;
+
+    const approvedHours = options.approvedHours ?? (Number(s.approved_hours ?? 0) || null);
+    const overrideHourJustification = options.overrideHourJustification ?? null;
+    const userFeedback = options.userFeedback ?? null;
+    const tier = options.tier ?? (s.tier as string | undefined) ?? null;
 
     // Only the essentials are promoted; Address/Birthday/hours are collected later.
     const y: Record<string, unknown> = {
@@ -608,6 +623,10 @@ export async function approveSubmission(id: string, reviewer?: string): Promise<
         "Code URL": s.code_url ?? "",
         "Playable URL": s.playable_url ?? "",
         "Description": s.description ?? "",
+        "Approved Hours": approvedHours,
+        "Override Hour Justification": overrideHourJustification,
+        "User Feedback": userFeedback,
+        "Tier": tier,
     };
     
 
@@ -618,6 +637,8 @@ export async function approveSubmission(id: string, reviewer?: string): Promise<
         reviewed_by: reviewer ?? null,
         reviewed_at: now(),
         ysws_record_id: ysws.id,
+        review_feedback: userFeedback,
+        override_hour_justification: overrideHourJustification,
     });
     return ysws;
 }
@@ -637,7 +658,7 @@ export async function requestSubmissionChanges(id: string, reviewer: string, fee
 
 export async function resubmitSubmission(
     id:string,
-    patch: Partial<Pick<SubmissionInput, 'title' | 'code_url' | 'playable_url' | 'description' | 'screenshot_url' | 'demo_video_url' | 'ai_disclosure' >>
+    patch: Partial<Pick<SubmissionInput, 'title' | 'code_url' | 'playable_url' | 'description' | 'screenshot_url' | 'demo_video_url' | 'ai_used' | 'ai_disclosure' >>
 ): Promise<Row | null> {
     return updateRecord(TABLE.projectSubmissions, id, {
         ...patch,
