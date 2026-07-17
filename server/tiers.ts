@@ -21,7 +21,7 @@ export function tierBySlug(slug: unknown): Tier | null {
 }
 
 export function computePayout(approvedHours: number, tier: Tier): number {
-    return Math.round(approvedHours * tier.multiplier);
+    return Math.round(approvedHours * 10 * tier.multiplier);
 }
 
 export const MAX_HOURS = 500;

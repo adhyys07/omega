@@ -83,7 +83,7 @@
   const chosenTier = $derived(tiers.find((t) => t.slug === tier) ?? null)
   // Same formula as the server's computePayout, so the preview and the payout agree.
   const preview = $derived(
-    chosenTier && hours != null && hours > 0 ? Math.round(hours * chosenTier.multiplier) : null)
+    chosenTier && hours != null && hours > 0 ? Math.round(hours * 10 * chosenTier.multiplier) : null)
   
 
   let subs = $state<Sub[]>([])
@@ -91,6 +91,7 @@
   let listErr = $state('')
   let selected = $state<Sub | null>(null)
   let messages = $state<Msg[]>([])
+  const visibleMessages = $derived(messages.filter((m) => !m.isParent))
   let draft = $state('')
   let dmSubmitter = $state(false)
   let sending = $state(false)
@@ -832,17 +833,17 @@
           <div style="padding:16px; max-height:44vh; overflow-y:auto; display:flex; flex-direction:column; gap:14px;">
             {#if loadingThread}
               <p style="color:#5b4f44; font-family:'Space Grotesk',sans-serif;">Loading thread…</p>
-            {:else if !messages.length}
+            {:else if !visibleMessages.length}
               <p style="color:#5b4f44; font-family:'Space Grotesk',sans-serif; font-size:.85rem;">No messages yet.</p>
             {:else}
-              {#each messages as m (m.ts)}
+              {#each visibleMessages as m (m.ts)}
                 <div style="font-family:'Space Grotesk',sans-serif;">
                   <div style="display:flex; align-items:baseline; gap:8px;">
                     <strong style="font-size:.82rem; color:#1c1714;">{m.author}</strong>
                     <small style="font-size:.68rem; color:#9c8a6e;">{fmtTs(m.ts)}</small>
                   </div>
                   <div style="font-size:.85rem; color:#1c1714; white-space:pre-wrap; line-height:1.5; margin-top:2px;">
-                    {m.isParent ? '📋 (the submission card)' : m.text}
+                    {m.text}
                   </div>
                 </div>
               {/each}

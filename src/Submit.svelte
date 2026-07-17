@@ -48,6 +48,13 @@
     created_at: string
   }
 
+  const submitChecklist = [
+    "20+ hours logged in Hackatime (or a good reason why not)",
+    "Public code repo with a README",
+    "Playable demo or video",
+    "AI use declared (or 'None')",
+    "No more than 2 active submissions at a time",
+  ]
   // Presentation only — the server whitelists which slugs can ever be awarded.
   const BADGE_META: Record<string, { icon: string; label: string; bg: string; color: string }> = {
     android_builder:    { icon: '▲', label: 'Android Builder',    bg: 'rgba(74,150,80,.16)',  color: '#3d7a40' },
@@ -468,6 +475,7 @@
       </div>
 
       <aside class="pane">
+        <div class="right-stack">
         <div style="background:#fbf4e6; border:3px solid #1c1714; border-radius:18px 12px 16px 13px/13px 16px 12px 18px; box-shadow:7px 7px 0 #1c1714; padding:24px;">
           <h2 style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.15rem; color:#1c1714; margin:0 0 4px;">Your projects</h2>
           <p style="font-family:'Space Grotesk',sans-serif; font-size:.78rem; color:#5b4f44; margin:0 0 14px;">
@@ -528,6 +536,16 @@
               </table>
             </div>
           {/if}
+        </div>
+
+          <section class="checklist-card">
+            <h3>Before you submit</h3>
+            <ol>
+              {#each submitChecklist as item}
+                <li>{item}</li>
+              {/each}
+            </ol>
+          </section>
         </div>
       </aside>
     </div>
@@ -663,6 +681,44 @@
   .ai-help {
     margin-top: 0;
     line-height: 1.35;
+  }
+
+  .right-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .checklist-card {
+    background: #fbf4e6;
+    border: 3px solid #1c1714;
+    border-radius: 18px 12px 16px 13px / 13px 16px 12px 18px;
+    box-shadow: 7px 7px 0 #1c1714;
+    padding: 20px 20px 18px;
+  }
+
+  .checklist-card h3 {
+    margin: 0 0 10px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 900;
+    font-size: 1rem;
+    color: #1c1714;
+    letter-spacing: -0.02em;
+  }
+
+  .checklist-card ol {
+    margin: 0;
+    padding-left: 18px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.82rem;
+    color: #5b4f44;
+    line-height: 1.5;
+    font-weight: 600;
+  }
+
+  .checklist-card li {
+    margin-bottom: 7px;
+    font-weight: 600;
   }
 
   @media (max-width: 900px) {

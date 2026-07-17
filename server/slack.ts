@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import type { HcUser } from './auth.ts';
-import type { Row } from './db.ts';
+import { getSlackIdForSub, type Row } from './db.ts';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 const REVIEW_CHANNEL = process.env.SLACK_REVIEW_CHANNEL;
@@ -238,8 +238,23 @@ export function parseActionValue(value: string): { kind: ReviewKind; id: string 
     return { kind: kind === 'pitch' ? 'pitch' : 'project', id: value.slice(i + 1) };
 }
 
+async function submitterMention(row: Row, user?: HcUser): Promise<string> {
+    const fromSession = typeof user?.slack_id === 'string' ? user.slack_id : null;
+    if (fromSession) return `<@${fromSession}>`;
+
+    const sub = typeof row.user_sub === 'string' ? row.user_sub : user?.sub;
+    if (sub) {
+        const slackId = await getSlackIdForSub(sub).catch(() => null);
+        if (slackId) return `<@${slackId}>`;
+    }
+
+    return '-';
+}
+
+
+
 /** The review card. Action buttons render only while the item is actionable. */
-function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, actor?: string): unknown[] {
+function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, byLine: string, actor?: string): unknown[] {
     const isPitch = kind === 'pitch';
 
     const blocks: unknown[] = [
@@ -256,8 +271,7 @@ function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, actor?
                 ]
                 : [
                     { type: 'mrkdwn', text: `*Project:*\n${row.title ?? '—'}` },
-                    { type: 'mrkdwn', text: `*By:*\n${`${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || '—'}` },
-                    { type: 'mrkdwn', text: `*Code:*\n${row.code_url || '—'}` },
+                    { type: 'mrkdwn', text: `*By:*\n${byLine}` },                    { type: 'mrkdwn', text: `*Code:*\n${row.code_url || '—'}` },
                     { type: 'mrkdwn', text: `*Playable:*\n${row.playable_url || '—'}` },
                 ],
         },
@@ -317,10 +331,11 @@ export async function notifySlackOfNewReview(
 ): Promise<{ channel: string; ts: string } | null> {
     if (!SLACK_TOKEN || !REVIEW_CHANNEL) return null;
     const label = kind === 'pitch' ? 'pitch' : 'submission';
+    const byLine = await submitterMention(row, user);
     const data = await slack<{ channel: string; ts: string }>('chat.postMessage', {
         channel: REVIEW_CHANNEL,
-        text: `New Omega ${label} by ${user.name ?? user.sub}`,
-        blocks: reviewBlocks(kind, row, 'pending'),
+        text: `New Omega ${label} by ${byLine}`,
+        blocks: reviewBlocks(kind, row, 'pending', byLine),
     });
     return { channel: data.channel, ts: data.ts };
 }
@@ -343,11 +358,12 @@ export async function updateReviewCard(
     actor?: string,
 ): Promise<void> {
     if (!SLACK_TOKEN) return;
+    const byLine = await submitterMention(row);
     await slack('chat.update', {
         channel,
         ts,
         text: `${kind === 'pitch' ? 'Pitch' : 'Submission'} ${state}`,
-        blocks: reviewBlocks(kind, row, state, actor),
+        blocks: reviewBlocks(kind, row, state, byLine, actor),
     });
 }
 
