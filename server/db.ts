@@ -450,6 +450,7 @@ export async function listAuthUsers(): Promise<Record<string, unknown>[]> {
         verification_status: r.verification_status ?? null,
         ysws_eligible: bool(r.ysws_eligible),
         slack_id: r.slack_id ?? null,
+        slack_username: r.slack_username ?? null,
         role: (r.role as string) ?? "user",
         banned: bool(r.banned),
         hackatime_trust: r.hackatime_trust ?? null,

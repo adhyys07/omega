@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyBaseLogger, FastifyRequest, FastifyReply }
 import { requireRole, getSessionUser, type HcUser } from "./auth.ts";
 import {
     listSubmissions, getSubmissionById, listPitches, getPitchById, setSubmissionBadges,
-    getSubmissionByPitchId,
+    getSubmissionByPitchId, listAuthUsers,
     approveSubmission, rejectSubmission, requestSubmissionChanges,
     approvePitch, rejectPitch, requestPitchChanges, getSlackIdForSub, type Row,
 } from "./db.ts";
@@ -271,23 +271,52 @@ export default async function reviewRoutes(app: FastifyInstance) {
     });
 
     app.get('/api/review/pitches', { preHandler: requireRole('reviewer') }, async (req) => {
-        const status = (req.query as { status?: string }).status;
-        const rows = await listPitches(status);
-        return rows.map((r) => ({
-            id: r.id,
-            title: r.title ?? null,
-            status: r.status ?? 'pending',
-            description: r.description ?? null,
-            why: r.why ?? null,
-            first_name: r.first_name ?? null,
-            last_name: r.last_name ?? null,
-            hasThread: !!(r.slack_channel && r.slack_ts),
-            // Reviewer-only: the duplicate-idea verdict never reaches the author,
-            // whose endpoint goes through pitchView (which omits this field).
-            duplicate_check: parseDuplicateCheck(r.duplicate_check),
-            created_at: r.created_at ?? null,
-        }));
-    });
+    const { status, q } = req.query as { status?: string; q?: string };
+    const rows = await listPitches(status);
+
+    const raw = String(q ?? '').trim().toLowerCase();
+    let filtered = rows;
+
+    if (raw) {
+        const needles = [...new Set([raw, raw.replace(/^@/, '')].filter(Boolean))];
+        const users = await listAuthUsers();
+        const bySub = new Map(users.map((u) => [String(u.sub ?? ''), u]));
+
+        const hit = (v: unknown): boolean => {
+            const s = String(v ?? '').toLowerCase();
+            return needles.some((n) => s.includes(n));
+        };
+
+        filtered = rows.filter((r) => {
+            const auth = bySub.get(String(r.user_sub ?? ''));
+            return [
+                r.title,
+                r.first_name,
+                r.last_name,
+                r.email,
+                r.user_sub,
+                auth?.name,
+                auth?.email,
+                auth?.slack_id,
+                auth?.slack_username,
+                auth?.username,
+            ].some(hit);
+        });
+    }
+
+    return filtered.map((r) => ({
+        id: r.id,
+        title: r.title ?? null,
+        status: r.status ?? 'pending',
+        description: r.description ?? null,
+        why: r.why ?? null,
+        first_name: r.first_name ?? null,
+        last_name: r.last_name ?? null,
+        hasThread: !!(r.slack_channel && r.slack_ts),
+        duplicate_check: parseDuplicateCheck(r.duplicate_check),
+        created_at: r.created_at ?? null,
+    }));
+});
 
     /** The pitch a project came from — so a reviewer can ask "did they build what
      *  they pitched?" without going and hunting for it. Reviewer-gated, so unlike the

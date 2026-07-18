@@ -62,6 +62,7 @@
   let internalJustification = $state('')
   let actionMsg = $state('')
   let actionErr = $state('')
+  let pitchSearch = $state('')
   let tiers = $state<TierDef[]>([])
   let tier = $state<string>('')
   let hours = $state<number | null>(null)
@@ -230,12 +231,16 @@
   }
 
   async function load() {
+    
     loading = true
     listErr = ''
     selected = null
     messages = []
     try {
-      const r = await apiFetch(listUrl(kind))
+      const params = new URLSearchParams()
+      if (kind === 'pitches' && pitchSearch.trim()) params.set('q', pitchSearch.trim())
+      const url = params.size ? `${listUrl(kind)}?${params.toString()}` : listUrl(kind)
+      const r = await apiFetch(url)
       if (!r.ok) throw new Error()
       subs = await r.json()
     } catch {
@@ -431,6 +436,25 @@
   {/each}
 </div>
 
+{#if kind === 'pitches'}
+  <div style="display:flex; gap:8px; margin:-6px 0 16px; flex-wrap:wrap;">
+    <input
+      bind:value={pitchSearch}
+      onkeydown={(e) => e.key === 'Enter' && load()}
+      placeholder="Search by name, email, Slack ID, or Slack username"
+      style="min-width:280px; flex:1; padding:8px 12px; border:2px solid #1c1714; border-radius:9px; font-family:'Space Grotesk',sans-serif; background:#fbf4e6;"
+    />
+    <button
+      onclick={load}
+      style="padding:8px 14px; border:2px solid #1c1714; border-radius:9px; font-family:'Space Grotesk',sans-serif; font-weight:700; background:var(--orange); color:#fff; cursor:pointer;"
+    >Search</button>
+    <button
+      onclick={() => { pitchSearch = ''; load() }}
+      style="padding:8px 14px; border:2px solid #1c1714; border-radius:9px; font-family:'Space Grotesk',sans-serif; font-weight:700; background:#fbf4e6; color:#1c1714; cursor:pointer;"
+    >Clear</button>
+  </div>
+{/if}
+
 {#if loading}
   <p style="color:#5b4f44;">Loading…</p>
 {:else if listErr}
@@ -481,7 +505,7 @@
     <!-- thread -->
     <div style={card}>
       {#if !selected}
-        <p style="padding:20px; color:#5b4f44; font-family:'Space Grotesk',sans-serif;">Pick a submission to see its Slack thread.</p>
+        <p style="padding:20px; color:#5b4f44; font-family:'Space Grotesk',sans-serif;">Pick a submission to review it and send to the omega airtable.</p>
       {:else}
         <div class="review-header">
           <div class="review-heading">
@@ -513,6 +537,12 @@
               {/if}
               {#if selected.demo_video_url}
                 <a href={selected.demo_video_url} target="_blank" rel="noopener noreferrer" style={btn}>🎬 Video</a>
+              {:else}
+                <button
+                  disabled
+                  title="No video submitted"
+                  style="{btn} background:#d8c8ab; color:#5b4f44; border-color:#5b4f44; box-shadow:none; opacity:.72; cursor:not-allowed;"
+                >🎬 Video</button>
               {/if}
             </div>
           {/if}
