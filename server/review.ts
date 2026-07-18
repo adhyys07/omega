@@ -11,7 +11,7 @@ import {
     editLink, pitchEditLink, frontendUrl, postBuilderControls,
     type ReviewKind, type SubmissionState,
     type Actor,
-    mention,
+    mention, isReviewer,
 } from "./slack.ts";
 import { BADGES, sanitizeBadges, hydrate } from "./badges.ts";
 import { checkGithubRepo, fetchReadme } from "./github-api.ts";
@@ -36,6 +36,16 @@ const ACTION_STATE: Record<ReviewAction, SubmissionState> = {
     reject: 'rejected',
     request_changes: 'changes_requested',
 };
+
+const SLACK_SPECIAL_MENTION_RE = /<!(?:channel|here|everyone)>/;
+const SLACK_USER_MENTION_RE = /<@([UW][A-Z0-9]+)>/g;
+
+function extractMentionedSlackIds(text: string): string[] {
+    const ids = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = SLACK_USER_MENTION_RE.exec(text)) !== null) ids.add(m[1]);
+    return [...ids];
+}
 
 function parseDuplicateCheck(raw: unknown): unknown {
     if (typeof raw !== 'string' || !raw.trim()) return null;
@@ -392,6 +402,18 @@ export default async function reviewRoutes(app: FastifyInstance) {
             return reply.status(409).send({ error: 'Pitch has no Slack thread' });
         }
 
+        if (SLACK_SPECIAL_MENTION_RE.test(text)) {
+            return reply.status(400).send({ error: 'Mass mentions are not allowed in review threads' });
+        }
+        const mentionedIds = extractMentionedSlackIds(text);
+        if (mentionedIds.length) {
+            const submitterSlackId = await getSlackIdForSub(String(row.user_sub));
+            const bad = mentionedIds.find((sid) => !isReviewer(sid) && sid !== submitterSlackId);
+            if (bad) {
+                return reply.status(403).send({ error: 'You can only mention reviewers/admins or this submitter' });
+            }
+        }
+
         try {
             await postReviewerMessage(
                 String(row.slack_channel), String(row.slack_ts),
@@ -479,6 +501,18 @@ export default async function reviewRoutes(app: FastifyInstance) {
         if (!row) return reply.status(404).send({ error: 'Submission not found' });
         if (!row.slack_channel || !row.slack_ts) {
             return reply.status(409).send({ error: 'Submission has no Slack thread' });
+        }
+
+        if (SLACK_SPECIAL_MENTION_RE.test(text)) {
+            return reply.status(400).send({ error: 'Mass mentions are not allowed in review threads' });
+        }
+        const mentionedIds = extractMentionedSlackIds(text);
+        if (mentionedIds.length) {
+            const submitterSlackId = await getSlackIdForSub(String(row.user_sub));
+            const bad = mentionedIds.find((sid) => !isReviewer(sid) && sid !== submitterSlackId);
+            if (bad) {
+                return reply.status(403).send({ error: 'You can only mention reviewers/admins or this submitter' });
+            }
         }
 
         try {

@@ -66,7 +66,14 @@
   let tier = $state<string>('')
   let hours = $state<number | null>(null)
   
-  type Msg = { ts: string; author: string; text: string; isBot: boolean; isParent: boolean }
+  type Msg = {
+    ts: string
+    author: string
+    avatar_url?: string | null
+    text: string
+    isBot: boolean
+    isParent: boolean
+  }
 
   // Pitches (the idea) and projects (the build) are reviewed the same way but
   // live in different tables, so the endpoints differ by kind.
@@ -476,28 +483,44 @@
       {#if !selected}
         <p style="padding:20px; color:#5b4f44; font-family:'Space Grotesk',sans-serif;">Pick a submission to see its Slack thread.</p>
       {:else}
-        <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28);">
-          <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1rem;">{selected.title ?? 'Untitled'}</div>
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.78rem; color:#5b4f44; margin-top:2px;">
-            {who(selected)}
-            {#if selected.created_at} · <span title="Submitted">🕘 {fmtDate(selected.created_at)}</span>{/if}
-            {#if selected.hackatime_hours} · {selected.hackatime_hours}h{/if}
+        <div class="review-header">
+          <div class="review-heading">
+            {#if kind === 'projects' && (selected.playable_url || selected.code_url)}
+              <a
+                href={selected.playable_url ?? selected.code_url ?? '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="selected-project-link"
+                title={`Open ${selected.playable_url ? 'demo' : 'repository'}`}
+              >{selected.title ?? 'Untitled'} ↗</a>
+            {:else}
+              <div class="selected-project-title">{selected.title ?? 'Untitled'}</div>
+            {/if}
+            <div class="review-meta">
+              {who(selected)}
+              {#if selected.created_at} · <span title="Submitted">🕘 {fmtDate(selected.created_at)}</span>{/if}
+              {#if selected.hackatime_hours} · {selected.hackatime_hours}h{/if}
+            </div>
           </div>
+
+          {#if kind === 'projects'}
+            <div class="primary-project-actions" aria-label="Project links">
+              {#if selected.playable_url}
+                <a href={selected.playable_url} target="_blank" rel="noopener noreferrer" style={btn}>▶ Demo</a>
+              {/if}
+              {#if selected.code_url}
+                <a href={selected.code_url} target="_blank" rel="noopener noreferrer" style={btn}>⌥ Repo</a>
+              {/if}
+              {#if selected.demo_video_url}
+                <a href={selected.demo_video_url} target="_blank" rel="noopener noreferrer" style={btn}>🎬 Video</a>
+              {/if}
+            </div>
+          {/if}
         </div>
 
-        <!-- everything a reviewer needs to open, one click away -->
+        <!-- GitHub validation and README controls stay together below the header. -->
         {#if kind === 'projects'}
-          <div style="padding:12px 16px; border-bottom:2px dashed rgba(28,23,20,.28); display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            {#if selected.code_url}
-              <a href={selected.code_url} target="_blank" rel="noopener" style={btn}>⌥ Repo</a>
-            {/if}
-            {#if selected.playable_url}
-              <a href={selected.playable_url} target="_blank" rel="noopener" style={btn}>▶ Demo</a>
-            {/if}
-            {#if selected.demo_video_url}
-              <a href={selected.demo_video_url} target="_blank" rel="noopener" style={btn}>🎬 Video</a>
-            {/if}
-
+          <div style="padding:10px 16px; border-bottom:2px dashed rgba(28,23,20,.28); display:flex; gap:8px; flex-wrap:wrap; align-items:center; background:rgba(28,23,20,.025);">
             <button
               onclick={() => (showReadme = !showReadme)}
               disabled={!gh?.readme?.found}
@@ -837,13 +860,22 @@
               <p style="color:#5b4f44; font-family:'Space Grotesk',sans-serif; font-size:.85rem;">No messages yet.</p>
             {:else}
               {#each visibleMessages as m (m.ts)}
-                <div style="font-family:'Space Grotesk',sans-serif;">
-                  <div style="display:flex; align-items:baseline; gap:8px;">
-                    <strong style="font-size:.82rem; color:#1c1714;">{m.author}</strong>
-                    <small style="font-size:.68rem; color:#9c8a6e;">{fmtTs(m.ts)}</small>
-                  </div>
-                  <div style="font-size:.85rem; color:#1c1714; white-space:pre-wrap; line-height:1.5; margin-top:2px;">
-                    {m.text}
+                <div style="display:flex; align-items:flex-start; gap:8px; font-family:'Space Grotesk',sans-serif;">
+                  {#if m.avatar_url}
+                    <img
+                      src={m.avatar_url}
+                      alt={m.author}
+                      style="width:22px; height:22px; border-radius:999px; border:1.5px solid #1c1714; object-fit:cover; flex:0 0 auto; margin-top:1px;"
+                    />
+                  {/if}
+                  <div style="min-width:0;">
+                    <div style="display:flex; align-items:baseline; gap:8px;">
+                      <strong style="font-size:.82rem; color:#1c1714;">{m.author}</strong>
+                      <small style="font-size:.68rem; color:#9c8a6e;">{fmtTs(m.ts)}</small>
+                    </div>
+                    <div style="font-size:.85rem; color:#1c1714; white-space:pre-wrap; line-height:1.5; margin-top:2px;">
+                      {m.text}
+                    </div>
                   </div>
                 </div>
               {/each}
@@ -887,9 +919,78 @@
     align-items: start;
   }
 
+  .review-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 16px;
+    border-bottom: 2px dashed rgba(28, 23, 20, 0.28);
+  }
+
+  .review-heading {
+    min-width: 0;
+  }
+
+  .selected-project-title,
+  .selected-project-link {
+    display: block;
+    overflow: hidden;
+    color: #1c1714;
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selected-project-link {
+    text-decoration: underline;
+    text-decoration-color: rgba(194, 69, 26, 0.45);
+    text-underline-offset: 3px;
+  }
+
+  .selected-project-link:hover {
+    color: #c2451a;
+    text-decoration-color: currentColor;
+  }
+
+  .selected-project-link:focus-visible,
+  .primary-project-actions a:focus-visible {
+    border-radius: 4px;
+    outline: 2px solid #2f6db0;
+    outline-offset: 3px;
+  }
+
+  .review-meta {
+    margin-top: 2px;
+    color: #5b4f44;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.78rem;
+  }
+
+  .primary-project-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   @media (max-width: 860px) {
     .review-grid {
       grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 560px) {
+    .review-header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .primary-project-actions {
+      justify-content: flex-start;
     }
   }
 </style>

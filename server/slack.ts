@@ -64,42 +64,99 @@ async function slackGet<T = Record<string, unknown>>(
 export type ThreadMessage = {
     ts: string;
     userId: string | null;
+    author: string;
+    avatar_url: string | null;
     text: string;
     isBot: boolean;
     isParent: boolean;
 };
 
-const userNameCache = new Map<string, string>();
+type SlackProfile = {
+    name: string;
+    avatar_url: string | null;
+};
 
-async function displayName(userId: string): Promise<string> {
-    const hit = userNameCache.get(userId);
+const userProfileCache = new Map<string, SlackProfile>();
+const BOT_ACTOR_PREFIX = /^<@([UW][A-Z0-9]+)>:\s*/;
+
+async function slackProfile(userId: string): Promise<SlackProfile> {
+    const hit = userProfileCache.get(userId);
     if (hit) return hit;
     try {
-        const d = await slackGet<{ user?: { real_name?: string; name?: string } }>('users.info', { user: userId });
-        const name = d.user?.real_name ?? d.user?.name ?? userId;
-        userNameCache.set(userId, name);
-        return name;
+        const d = await slackGet<{ user?: { real_name?: string; name?: string; profile?: { image_48?: string } } }>('users.info', { user: userId });
+        const profile: SlackProfile = {
+            name: d.user?.real_name ?? d.user?.name ?? userId,
+            avatar_url: d.user?.profile?.image_48 ?? null,
+        };
+        userProfileCache.set(userId, profile);
+        return profile;
     } catch {
-        return userId;
+        return { name: userId, avatar_url: null };
     }
+}
+
+function stripActorPrefix(text: string): string {
+    return text.replace(BOT_ACTOR_PREFIX, '');
 }
 
 export async function fetchThreadReplies(channel: string, ts: string): Promise<ThreadMessage[]> {
     if (!SLACK_TOKEN) return [];
     const data = await slackGet<{
-        messages?: { ts: string; user?: string; text?: string; bot_id?: string; username?: string }[];
+        messages?: {
+            ts: string;
+            user?: string;
+            text?: string;
+            bot_id?: string;
+            username?: string;
+            icons?: { image_48?: string };
+        }[];
     }>('conversations.replies', { channel, ts, limit: '100' });
 
     const msgs = data.messages ?? [];
     return Promise.all(
-        msgs.map(async (m) => ({
-            ts: m.ts,
-            userId: m.user ?? null,
-            author: m.bot_id ? (m.username ?? 'Omega bot') : m.user ? await displayName(m.user) : 'unknown',
-            text: m.text ?? '',
-            isBot: !!m.bot_id,
-            isParent: m.ts === ts,
-        })),
+        msgs.map(async (m): Promise<ThreadMessage> => {
+            const text = m.text ?? '';
+
+            // User-authored replies: resolve display name + avatar from Slack profile.
+            if (!m.bot_id && m.user) {
+                const p = await slackProfile(m.user);
+                return {
+                    ts: m.ts,
+                    userId: m.user,
+                    author: p.name,
+                    avatar_url: p.avatar_url,
+                    text,
+                    isBot: false,
+                    isParent: m.ts === ts,
+                };
+            }
+
+            // Bot-authored reviewer message; payload starts with "<@U...>:".
+            const actorId = text.match(BOT_ACTOR_PREFIX)?.[1];
+            if (actorId) {
+                const p = await slackProfile(actorId);
+                return {
+                    ts: m.ts,
+                    userId: actorId,
+                    author: p.name,
+                    avatar_url: p.avatar_url,
+                    text: stripActorPrefix(text),
+                    isBot: true,
+                    isParent: m.ts === ts,
+                };
+            }
+
+            // Generic bot/system message fallback.
+            return {
+                ts: m.ts,
+                userId: m.user ?? null,
+                author: m.username ?? 'Omega bot',
+                avatar_url: m.icons?.image_48 ?? null,
+                text,
+                isBot: !!m.bot_id,
+                isParent: m.ts === ts,
+            };
+        }),
     );
 }
 /** A real Slack mention when we know who acted, a bold name when we don't.

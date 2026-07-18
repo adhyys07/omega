@@ -500,10 +500,26 @@
                 </thead>
                 <tbody>
                   {#each submissions as s (s.id)}
-                    <tr style="border-top:2px dashed rgba(28,23,20,.28);">
+                                        <tr style="border-top:2px dashed rgba(28,23,20,.28);">
                       <td style="padding:11px 10px 11px 0; max-width:220px;">
-                        <div style="font-weight:700; color:#1c1714; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                          {s.title ?? 'Untitled'}
+                        {#if s.playable_url || s.code_url}
+                          <a
+                            href={s.playable_url ?? s.code_url ?? '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="project-title-link"
+                            title={`Open ${s.playable_url ? 'demo' : 'repository'} for ${s.title ?? 'Untitled'}`}
+                          >{s.title ?? 'Untitled'} ↗</a>
+                        {:else}
+                          <div class="project-title">{s.title ?? 'Untitled'}</div>
+                        {/if}
+                        <div class="project-links">
+                          {#if s.playable_url}
+                            <a href={s.playable_url} target="_blank" rel="noopener noreferrer">Demo</a>
+                          {/if}
+                          {#if s.code_url}
+                            <a href={s.code_url} target="_blank" rel="noopener noreferrer">Repo</a>
+                          {/if}
                         </div>
                         {#if s.hackatime_project}
                           <div style="color:#5b4f44; font-size:.72rem;">⏱ {s.hackatime_project}</div>
@@ -683,10 +699,59 @@
     line-height: 1.35;
   }
 
-  .right-stack {
+    .right-stack {
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .project-title,
+  .project-title-link {
+    display: block;
+    overflow: hidden;
+    color: #1c1714;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .project-title-link {
+    text-decoration: underline;
+    text-decoration-color: rgba(194, 69, 26, 0.45);
+    text-underline-offset: 3px;
+  }
+
+  .project-title-link:hover {
+    color: #c2451a;
+    text-decoration-color: currentColor;
+  }
+
+  .project-title-link:focus-visible,
+  .project-links a:focus-visible {
+    border-radius: 3px;
+    outline: 2px solid #2f6db0;
+    outline-offset: 2px;
+  }
+
+  .project-links {
+    display: flex;
+    gap: 8px;
+    margin-top: 3px;
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+
+  .project-links:empty {
+    display: none;
+  }
+
+  .project-links a {
+    color: #c2451a;
+    text-decoration: none;
+  }
+
+    .project-links a:hover {
+    text-decoration: underline;
   }
 
   .checklist-card {

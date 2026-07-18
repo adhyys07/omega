@@ -3,7 +3,7 @@
 
 const BASE = process.env.HACKATIME_BASE_URL || "https://hackatime.hackclub.com";
 
-const PROJECTS_SINCE = process.env.HACKATIME_PROJECTS_SINCE || "2026-07-27";
+const PROJECTS_SINCE = process.env.HACKATIME_PROJECTS_SINCE?.trim() || "";
 
 // The project-details stats window defaults to the last year server-side, which would
 // clamp `first_heartbeat` for anything older. Ask for the full history, then filter
@@ -34,8 +34,15 @@ export async function fetchHackatimeProjectDetails(accessToken: string): Promise
         throw new Error(`Failed to fetch Hackatime project details: ${res.status} ${res.statusText}`);
     }
     const data = (await res.json()) as { projects?: HackatimeProject[] };
-    const cutoff = new Date(`${PROJECTS_SINCE}T00:00:00`).getTime();
-    return (data.projects ?? []).filter((project) => {
+    const projects = data.projects ?? [];
+
+    // Only apply a start-date cutoff when it is explicitly configured and valid.
+    // A future cutoff date would hide every project, so ignore it.
+    const cutoff = PROJECTS_SINCE ? new Date(`${PROJECTS_SINCE}T00:00:00`).getTime() : Number.NaN;
+    const hasCutoff = Number.isFinite(cutoff) && cutoff <= Date.now();
+    if (!hasCutoff) return projects;
+
+    return projects.filter((project) => {
         if (!project.first_heartbeat) return false;
         const started = new Date(project.first_heartbeat).getTime();
         return Number.isFinite(started) && started >= cutoff;
