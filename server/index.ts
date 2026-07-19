@@ -3,6 +3,9 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import { createSignup, countSignups, listActiveShopItems } from './db.ts'
 import cookie from '@fastify/cookie'
+import { createReadStream } from 'node:fs'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
 import authRoutes from './auth.ts'
 import adminRoutes from './admin.ts'
 import HackatimeRoutes from './hackatime.ts'
@@ -13,6 +16,52 @@ import pitchRoutes from './pitches.ts'
 import devRoutes from './dev.ts'
 
 const app = Fastify({ logger: true })
+const distDir = path.resolve(process.cwd(), 'dist')
+
+const MIME_TYPES: Record<string, string> = {
+  '.css': 'text/css; charset=utf-8',
+  '.gif': 'image/gif',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
+}
+
+function safeStaticPath(urlPath: string): string | null {
+  const normalized = path.normalize(decodeURIComponent(urlPath)).replace(/^([/\\])+/, '')
+  if (!normalized || normalized.startsWith('..') || path.isAbsolute(normalized)) return null
+  return path.join(distDir, normalized)
+}
+
+async function serveSpa(req: Parameters<typeof app.get>[0] extends string ? never : never, reply: any) {
+  const rawPath = new URL((req as { url: string }).url, 'http://localhost').pathname
+  const filePath = safeStaticPath(rawPath)
+
+  if (filePath) {
+    try {
+      const stat = await fs.stat(filePath)
+      if (stat.isFile()) {
+        reply.type(MIME_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream')
+        return reply.send(createReadStream(filePath))
+      }
+    } catch {}
+  }
+
+  const indexPath = path.join(distDir, 'index.html')
+  try {
+    reply.type('text/html; charset=utf-8')
+    return reply.send(createReadStream(indexPath))
+  } catch {
+    return reply.code(404).send({ error: 'Not Found', message: 'Built frontend not found' })
+  }
+}
 
 await app.register(cors, {
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
@@ -48,6 +97,17 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 app.get('/api/health', async () => {
     return { status: 'ok' }
+})
+
+// Serve the built SPA in production so direct hits to / and client-side routes
+// (like /shop or /admin/review) do not fall through to a JSON 404.
+app.get('/', serveSpa as never)
+app.get('/*', async (req, reply) => {
+  const pathname = new URL(req.url, 'http://localhost').pathname
+  if (pathname.startsWith('/api/')) {
+    return reply.code(404).send({ error: 'Not Found', message: `Route ${req.method}:${pathname} not found` })
+  }
+  return serveSpa(req as never, reply)
 })
 
 // Create a signup

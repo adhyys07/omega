@@ -72,6 +72,7 @@ export type ThreadMessage = {
 };
 
 type SlackProfile = {
+    handle: string;
     name: string;
     avatar_url: string | null;
 };
@@ -85,13 +86,14 @@ async function slackProfile(userId: string): Promise<SlackProfile> {
     try {
         const d = await slackGet<{ user?: { real_name?: string; name?: string; profile?: { image_48?: string } } }>('users.info', { user: userId });
         const profile: SlackProfile = {
+            handle: d.user?.name ?? d.user?.real_name ?? userId,
             name: d.user?.real_name ?? d.user?.name ?? userId,
             avatar_url: d.user?.profile?.image_48 ?? null,
         };
         userProfileCache.set(userId, profile);
         return profile;
     } catch {
-        return { name: userId, avatar_url: null };
+        return { handle: userId, name: userId, avatar_url: null };
     }
 }
 
@@ -285,7 +287,7 @@ export async function postReviewerMessage(
                 channel,
                 thread_ts: ts,
                 text: rendered,
-                username: p.name,
+                username: p.handle,
                 ...(p.avatar_url ? { icon_url: p.avatar_url } : {}),
             });
             return;
