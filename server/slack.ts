@@ -274,6 +274,7 @@ export async function postReviewerMessage(
     text: string,
 ): Promise<void> {
     if (!SLACK_TOKEN) return;
+    const rendered = `${mention(author)}: ${text}`;
 
     // Prefer native actor attribution in Slack (name + avatar) when we know the
     // acting reviewer's Slack id. Requires chat:write.customize in the workspace.
@@ -283,7 +284,7 @@ export async function postReviewerMessage(
             await slack('chat.postMessage', {
                 channel,
                 thread_ts: ts,
-                text,
+                text: rendered,
                 username: p.name,
                 ...(p.avatar_url ? { icon_url: p.avatar_url } : {}),
             });
@@ -296,9 +297,7 @@ export async function postReviewerMessage(
     await slack('chat.postMessage', {
         channel,
         thread_ts: ts,
-        // mention() already emits its own bold for the no-slack-id fallback; wrapping
-        // it again would produce *<@U…>*, which Slack does not render as a mention.
-        text: `${mention(author)}: ${text}`,
+        text: rendered,
     });
 }
 

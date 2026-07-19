@@ -19,8 +19,13 @@ await app.register(cors, {
   credentials: true,
 })
 
-await app.register(cookie, {
-  secret: process.env.SESSION_SECRET!})
+const sessionSecret = process.env.SESSION_SECRET?.trim()
+if (sessionSecret) {
+  await app.register(cookie, { secret: sessionSecret })
+} else {
+  app.log.warn('SESSION_SECRET is not set; cookie sessions will be unsigned')
+  await app.register(cookie)
+}
 
 await app.register(authRoutes)
 await app.register(HackatimeRoutes)
