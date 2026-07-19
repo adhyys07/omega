@@ -682,9 +682,18 @@
     </div>
 
   {:else if active === 'review'}
-    <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>
-    <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,7vw,3.4rem); letter-spacing:-.02em; margin:0 0 8px; text-shadow:3px 3px 0 rgba(255,69,0,.16);">Review</h1>
-    <p style="font-size:1rem; color:#5b4f44; margin:0 0 24px;">Every submission and its Slack thread. Messages you send here land in the project's thread.</p>
+    <section class="review-page-heading">
+      <div>
+        <div class="review-kicker">✦ Review workspace</div>
+        <h1>Make the call.</h1>
+        <p>Move from pitch to proof to decision. Check the work, compare what was promised, and keep feedback in the project’s Slack thread.</p>
+      </div>
+      <div class="review-flow" aria-label="Review workflow">
+        <span><b>1</b> Triage</span>
+        <span><b>2</b> Verify</span>
+        <span><b>3</b> Decide</span>
+      </div>
+    </section>
     <Review />
 
   {:else if active === 'stages'}
@@ -759,6 +768,83 @@
     opacity: 0.13;
     background-image: radial-gradient(rgba(28, 23, 20, 0.85) 22%, transparent 24%);
     background-size: 6px 6px;
+  }
+
+  .review-page-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 28px;
+    margin-bottom: 24px;
+  }
+
+  .review-kicker {
+    margin-bottom: 8px;
+    color: var(--orange);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .review-page-heading h1 {
+    margin: 0;
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(2.2rem, 7vw, 3.4rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1;
+    text-shadow: 3px 3px 0 rgba(255, 69, 0, 0.16);
+  }
+
+  .review-page-heading p {
+    max-width: 650px;
+    margin: 12px 0 0;
+    color: #5b4f44;
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  .review-flow {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
+    padding: 6px;
+    border: 2px solid #1c1714;
+    border-radius: 12px;
+    background: #fbf4e6;
+    box-shadow: 3px 3px 0 rgba(28, 23, 20, 0.15);
+  }
+
+  .review-flow span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 9px;
+    color: #5b4f44;
+    font-size: 0.7rem;
+    font-weight: 800;
+  }
+
+  .review-flow b {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #1c1714;
+    color: #fff;
+    font-size: 0.65rem;
+  }
+
+  @media (max-width: 760px) {
+    .review-page-heading { align-items: flex-start; flex-direction: column; }
+    .review-flow { width: 100%; }
+    .review-flow span { flex: 1; justify-content: center; }
+  }
+
+  @media (max-width: 480px) {
+    .review-flow span { padding-inline: 4px; font-size: 0.62rem; }
   }
 
   .ai {

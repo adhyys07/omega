@@ -274,6 +274,25 @@ export async function postReviewerMessage(
     text: string,
 ): Promise<void> {
     if (!SLACK_TOKEN) return;
+
+    // Prefer native actor attribution in Slack (name + avatar) when we know the
+    // acting reviewer's Slack id. Requires chat:write.customize in the workspace.
+    if (author.slackId) {
+        const p = await slackProfile(author.slackId);
+        try {
+            await slack('chat.postMessage', {
+                channel,
+                thread_ts: ts,
+                text,
+                username: p.name,
+                ...(p.avatar_url ? { icon_url: p.avatar_url } : {}),
+            });
+            return;
+        } catch {
+            // Fall through to a standard bot post below when customization is not allowed.
+        }
+    }
+
     await slack('chat.postMessage', {
         channel,
         thread_ts: ts,

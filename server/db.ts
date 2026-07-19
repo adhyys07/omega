@@ -21,6 +21,7 @@ const TABLE = {
     yswsSubmissions: "YSWS Project Submission",
 } as const;
 
+
 export type Assessment = { tier: string; approved_hours: number };
 
 export type ApprovalSubmissionOptions = {
@@ -312,15 +313,34 @@ async function findAuthUser(sub: string): Promise<Row | null> {
     return findOne(TABLE.authUsers, `{sub}='${esc(sub)}'`);
 }
 
+function normalizeAddress(address: HcUser["address"] | undefined) {
+    const streetAddress1 = address?.street_address?.trim() || null;
+    const locality = address?.locality?.trim() || null;
+    const region = address?.region?.trim() || null;
+    const postalCode = address?.postal_code?.trim() || null;
+    const country = address?.country?.trim() || null;
+
+    const formatted = 
+        address?.formatted?.trim() 
+        || [streetAddress1, locality, region, postalCode, country].filter(Boolean).join(', ')
+        || null;
+    
+    return {
+        address: formatted,
+        street_address: streetAddress1,
+        locality,
+        region,
+        postal_code: postalCode,
+        country,
+    };
+}
+
+
+
 export async function upsertAuthUser(u: HcUser): Promise<void> {
     const existing = await findAuthUser(u.sub);
 
-    const a =  u.address;
-    const formattedAddress =
-        a?.formatted ??
-        ([a?.street_address, a?.locality, a?.region, a?.postal_code, a?.country]
-            .filter(Boolean)
-            .join(', ') || null);
+    const address = normalizeAddress(u.address);
 
     const fields: Record<string, unknown> = {
         email: u.email ?? null,
@@ -329,7 +349,12 @@ export async function upsertAuthUser(u: HcUser): Promise<void> {
         ysws_eligible: u.ysws_eligible ?? false,
         slack_id: u.slack_id ?? null,
         phone_number: u.phone_number ?? null,
-        address: formattedAddress,
+        address: address.address,
+        street_address: address.street_address,
+        locality: address.locality,
+        region: address.region,
+        postal_code: address.postal_code,
+        country: address.country,
         birthdate: u.birthdate ?? null,
         last_login: now(),
     };
@@ -386,9 +411,9 @@ export async function adjustUserTokens(sub: string, delta: number, reason: strin
     return { ok: true, tokens: next };
 }
 
-export async function getAuthUserMeta(sub: string): Promise<{ role: string; banned: boolean }> {
+export async function getAuthUserMeta(sub: string): Promise<{ role: string; banned: boolean; tokens: number }> {
     const row = await findAuthUser(sub);
-    return { role: (row?.role as string) ?? "user", banned: bool(row?.banned) };
+    return { role: (row?.role as string) ?? "user", banned: bool(row?.banned), tokens: Number(row?.tokens ?? 0) };
 }
 
 export async function getAuthUserBySub(
@@ -615,8 +640,9 @@ export async function approveSubmission(id: string, reviewer?: string, options: 
     const overrideHourJustification = options.overrideHourJustification ?? null;
     const userFeedback = options.userFeedback ?? null;
     const tier = options.tier ?? (s.tier as string | undefined) ?? null;
+    const auth = await findAuthUser(String(s.user_sub ?? ''));
 
-    // Only the essentials are promoted; Address/Birthday/hours are collected later.
+    // Promote submission + reviewer assessment data into the YSWS record.
     const y: Record<string, unknown> = {
         "First Name": s.first_name ?? "",
         "Last Name": s.last_name ?? "",
@@ -629,6 +655,19 @@ export async function approveSubmission(id: string, reviewer?: string, options: 
         "User Feedback": userFeedback,
         "Tier": tier,
     };
+
+    const addressFields: Record<string, unknown> = {
+        "Address": (auth?.address as string) ?? "",
+        "Street Address 1": (auth?.street_address as string) ?? "",
+        "City": (auth?.locality as string) ?? "",
+        "State / Province / Region": (auth?.region as string) ?? "",
+        "Postal Code": (auth?.postal_code as string) ?? "",
+        "Country": (auth?.country as string) ?? "",
+    };
+
+    for (const [field, value] of Object.entries(addressFields)) {
+        if (String(value ?? "").trim()) y[field] = value;
+    }
     
 
     const ysws = await createRecord(TABLE.yswsSubmissions, y);

@@ -57,12 +57,15 @@
   let savingBadges = $state(false)
   let badgeMsg = $state('')
   let acting = $state(false)
-  let showFeedBack = $state(false)
   let feedback = $state('')
   let internalJustification = $state('')
+  let decisionAction = $state<'approve' | 'reject' | 'request_changes'>('approve')
+  let requestedChangesCount = $state<number | null>(null)
   let actionMsg = $state('')
   let actionErr = $state('')
   let pitchSearch = $state('')
+  let queueSearch = $state('')
+  let queueStatus = $state<'all' | 'pending' | 'changes_requested'>('all')
   let tiers = $state<TierDef[]>([])
   let tier = $state<string>('')
   let hours = $state<number | null>(null)
@@ -263,9 +266,10 @@
     badgeMsg = ''
     actionMsg = ''
     actionErr = ''
-    showFeedBack = false
     feedback = ''
     internalJustification = ''
+    decisionAction = 'approve'
+    requestedChangesCount = null
     awarded = new Set(s.badges ?? [])   // pre-toggle chips to what's already awarded
     // Prefill the payout bar: a prior assessment if one exists, else the reviewer
     // starts from the builder's claimed hours and adjusts.
@@ -333,14 +337,13 @@
     actionErr = ''
     actionMsg = ''
 
-    // Request-changes is two-click: reveal the box, then send. Feedback is
-    // mandatory — the server rejects an empty one too.
-    if (action === 'request_changes' && !showFeedBack) {
-      showFeedBack = true
-      return
-    }
+    // Requesting changes requires clear reviewer guidance.
     if (action === 'request_changes' && !feedback.trim()) {
       actionErr = 'Please provide feedback for the submitter.'
+      return
+    }
+    if (action === 'request_changes' && (requestedChangesCount == null || requestedChangesCount < 1)) {
+      actionErr = 'Enter how many changes are required.'
       return
     }
 
@@ -351,6 +354,11 @@
       if (!internalJustification.trim()) { actionErr = 'Enter the override-hour justification.'; return }
     }
 
+    const feedbackForAction =
+      action === 'request_changes' && requestedChangesCount != null
+        ? `[Changes requested: ${requestedChangesCount}] ${feedback.trim()}`
+        : feedback.trim()
+
     acting = true
     try {
       const r = await apiFetch(actionUrl(kind, selected.id), {
@@ -358,8 +366,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
-          feedback: feedback.trim(),
-          user_feedback: feedback.trim(),
+          feedback: feedbackForAction,
+          user_feedback: feedbackForAction,
           internal_justification: internalJustification.trim(),
           ...(kind === 'projects' && action === 'approve' ? { tier, approved_hours: hours } : {}),
         }),
@@ -378,7 +386,7 @@
       }
       feedback = ''
       internalJustification = ''
-      showFeedBack = false
+      requestedChangesCount = null
       const msg = data.payout
         ? `Approved · paid ${data.payout.tokens} Ω ✓`
         : `Marked ${data.status.replace('_', ' ')} ✓`
@@ -416,11 +424,23 @@
   const fmtTs = (ts: string) => new Date(Number(ts) * 1000).toLocaleString()
   const who = (s: Sub) => `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim() || '—'
 
+  const filteredSubs = $derived.by(() => {
+    const query = queueSearch.trim().toLowerCase()
+    return subs.filter((s) => {
+      const matchesStatus = queueStatus === 'all' || s.status === queueStatus
+      const haystack = `${s.title ?? ''} ${s.first_name ?? ''} ${s.last_name ?? ''}`.toLowerCase()
+      return matchesStatus && (!query || haystack.includes(query))
+    })
+  })
+  const pendingCount = $derived(subs.filter((s) => s.status === 'pending').length)
+  const changesCount = $derived(subs.filter((s) => s.status === 'changes_requested').length)
+  const selectedPosition = $derived(selected ? filteredSubs.findIndex((s) => s.id === selected?.id) + 1 : 0)
+
   const card =
     'background:#fbf4e6; border:2.5px solid #1c1714; border-radius:16px 11px 15px 12px/12px 15px 11px 16px; box-shadow:5px 5px 0 rgba(28,23,20,.13);'
 </script>
 
-<div style="display:flex; gap:8px; margin-bottom:20px;">
+<div class="review-switcher" aria-label="Review queue type">
   {#each [{ k: 'pitches', label: '💡 Pitches' }, { k: 'projects', label: '🚀 Projects' }] as t}
     <button
       onclick={() => switchKind(t.k as Kind)}
@@ -436,8 +456,17 @@
   {/each}
 </div>
 
+<div class="review-overview" aria-label="Queue overview">
+  <div><span class="overview-label">Queue</span><strong>{subs.length}</strong><span>{kind}</span></div>
+  <div><span class="overview-dot pending-dot"></span><strong>{pendingCount}</strong><span>pending</span></div>
+  <div><span class="overview-dot changes-dot"></span><strong>{changesCount}</strong><span>reships</span></div>
+  <button onclick={load} disabled={loading} class="refresh-queue" title="Refresh the current queue">
+    {loading ? 'Refreshing…' : '↻ Refresh'}
+  </button>
+</div>
+
 {#if kind === 'pitches'}
-  <div style="display:flex; gap:8px; margin:-6px 0 16px; flex-wrap:wrap;">
+  <div class="remote-search">
     <input
       bind:value={pitchSearch}
       onkeydown={(e) => e.key === 'Enter' && load()}
@@ -464,21 +493,31 @@
 {:else}
   <div class="review-grid">
     <!-- queue -->
-    <div style={card}>
-      <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28); font-family:'Syne',sans-serif; font-weight:800; font-size:.95rem;">
-        Queue <span style="color:#5b4f44; font-weight:600; font-size:.8rem;">({subs.length})</span>
+    <aside class="queue-panel" style={card} aria-label={`${kind} review queue`}>
+      <div class="queue-header">
+        <div><span class="queue-eyebrow">Review next</span><div class="queue-title">{kind === 'pitches' ? 'Pitch queue' : 'Project queue'}</div></div>
+        <span class="queue-total">{filteredSubs.length}/{subs.length}</span>
       </div>
-      <div style="max-height:60vh; overflow-y:auto;">
-        {#each subs as s (s.id)}
+      <div class="queue-tools">
+        <label class="queue-search"><span aria-hidden="true">⌕</span><input bind:value={queueSearch} placeholder="Filter this queue…" aria-label="Filter queue" /></label>
+        <div class="queue-filters" aria-label="Filter by status">
+          <button class:active={queueStatus === 'all'} onclick={() => (queueStatus = 'all')}>All</button>
+          <button class:active={queueStatus === 'pending'} onclick={() => (queueStatus = 'pending')}>Pending</button>
+          <button class:active={queueStatus === 'changes_requested'} onclick={() => (queueStatus = 'changes_requested')}>Reships</button>
+        </div>
+      </div>
+      <div class="queue-list">
+        {#if filteredSubs.length === 0}
+          <div class="queue-empty"><strong>No matching work</strong><span>Try another search or status filter.</span></div>
+        {/if}
+        {#each filteredSubs as s, index (s.id)}
           <button
             onclick={() => open(s)}
-            style="
-              display:block; width:100%; text-align:left; cursor:pointer;
-              padding:12px 16px; border:none; border-bottom:2px dashed rgba(28,23,20,.18);
-              font-family:'Space Grotesk',sans-serif;
-              background:{selected?.id === s.id ? 'rgba(255,69,0,.12)' : 'transparent'};
-            "
+            class="queue-item"
+            class:selected={selected?.id === s.id}
+            aria-current={selected?.id === s.id ? 'true' : undefined}
           >
+            <span class="queue-index">{String(index + 1).padStart(2, '0')}</span>
             <div style="font-weight:700; color:#1c1714; font-size:.88rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
               {s.title ?? 'Untitled'}
             </div>
@@ -500,15 +539,24 @@
           </button>
         {/each}
       </div>
-    </div>
+    </aside>
 
-    <!-- thread -->
-    <div style={card}>
+    <!-- review workspace -->
+    <main class="review-detail" style={card}>
       {#if !selected}
-        <p style="padding:20px; color:#5b4f44; font-family:'Space Grotesk',sans-serif;">Pick a submission to review it and send to the omega airtable.</p>
+        <div class="review-empty-state">
+          <span class="empty-mark">Ω</span>
+          <strong>Select something to review</strong>
+          <p>Choose an item from the queue. Its evidence, linked work, conversation, and decision controls will appear here.</p>
+        </div>
       {:else}
         <div class="review-header">
           <div class="review-heading">
+            <div class="selected-context">
+              <span>{kind === 'pitches' ? 'Pitch review' : 'Project review'}</span>
+              {#if selectedPosition > 0}<span>Item {selectedPosition} of {filteredSubs.length}</span>{/if}
+              <span class="selected-status" style={STATUS_STYLE[selected.status] ?? STATUS_STYLE.pending}>{STATUS_LABEL[selected.status] ?? selected.status}</span>
+            </div>
             {#if kind === 'projects' && (selected.playable_url || selected.code_url)}
               <a
                 href={selected.playable_url ?? selected.code_url ?? '#'}
@@ -679,10 +727,49 @@
               ⚖ Decision
             </div>
 
-            {#if kind === 'projects'}
+            <div style="display:grid; gap:7px; margin-bottom:12px;">
+              <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#1c1714;">
+                Decision type
+                <select
+                  bind:value={decisionAction}
+                  style="width:100%; margin-top:6px; padding:9px 11px; border:2px solid #1c1714; border-radius:9px; font-family:'Space Grotesk',sans-serif; font-size:.84rem; background:#fbf4e6; color:#1c1714;"
+                >
+                  <option value="approve">Approve</option>
+                  <option value="request_changes">Request changes</option>
+                  <option value="reject">Reject</option>
+                </select>
+              </label>
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.74rem; color:#5b4f44;">
+                Approve accepts the submission, request changes asks for a reship, reject closes it.
+              </div>
+            </div>
+
+            {#if decisionAction === 'request_changes'}
+              <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#1c1714; margin-bottom:10px;">
+                Number of changes required
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  bind:value={requestedChangesCount}
+                  placeholder="e.g. 2"
+                  style="width:130px; margin-top:6px; padding:8px 10px; border:2px solid #1c1714; border-radius:8px; font-family:'Space Grotesk',sans-serif; font-size:.84rem; background:#fbf4e6;"
+                />
+              </label>
+            {/if}
+
+            {#if kind === 'projects' && decisionAction === 'approve'}
               <div style="margin-bottom:12px; padding:12px 14px; border:2px dashed rgba(28,23,20,.28); border-radius:12px; background:rgba(255,179,71,.07);">
                 <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#b07410; margin-bottom:8px;">
                   💰 Payout {#if selected.paid_at}· already paid{/if}
+                </div>
+
+                <div class="tracked-hours" title="Total time tracked for the Hackatime project selected by the builder">
+                  <div>
+                    <span class="tracked-hours-label">Hackatime total</span>
+                    <span class="tracked-hours-help">Tracked on this project</span>
+                  </div>
+                  <strong>{selected.hackatime_hours != null ? `${selected.hackatime_hours.toFixed(1)}h` : 'Not available'}</strong>
                 </div>
 
                 {#if selected.paid_at}
@@ -717,8 +804,8 @@
                       />
                     </label>
 
-                    {#if selected.hackatime_hours}
-                      <span style="font-size:.75rem; color:#5b4f44;">claimed: {selected.hackatime_hours}h</span>
+                    {#if selected.hackatime_hours != null && hours != null && hours !== selected.hackatime_hours}
+                      <span class="hours-difference">{hours < selected.hackatime_hours ? '−' : '+'}{Math.abs(hours - selected.hackatime_hours).toFixed(1)}h adjustment</span>
                     {/if}
 
                     {#if preview !== null}
@@ -739,6 +826,9 @@
               <div style="margin-bottom:10px; display:grid; gap:10px;">
                 <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#1c1714;">
                   User feedback
+                  <div style="font-size:.72rem; font-weight:600; color:#5b4f44; margin-top:2px;">
+                    Purpose: sent to the builder in review messages and DMs.
+                  </div>
                   <textarea
                     bind:value={feedback}
                     placeholder="Shown to the builder and sent in the DM."
@@ -747,8 +837,12 @@
                   ></textarea>
                 </label>
 
+                {#if decisionAction === 'approve'}
                 <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#1c1714;">
                   Internal override justification
+                  <div style="font-size:.72rem; font-weight:600; color:#5b4f44; margin-top:2px;">
+                    Purpose: internal audit note for YSWS/hour overrides; not shown to the builder.
+                  </div>
                   <textarea
                     bind:value={internalJustification}
                     placeholder="Why these hours were overridden. Stored with the YSWS submission only."
@@ -756,10 +850,14 @@
                     style="width:100%; box-sizing:border-box; margin-top:6px; padding:11px 13px; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.85rem; background:#fbf4e6; color:#1c1714; outline:none; box-shadow:3px 3px 0 #1c1714; resize:vertical;"
                   ></textarea>
                 </label>
+                {/if}
               </div>
-            {:else if showFeedBack}
+            {:else}
               <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#1c1714; margin-bottom:10px;">
                 User feedback
+              <div style="font-size:.72rem; font-weight:600; color:#5b4f44; margin-top:2px;">
+                Purpose: sent to the submitter so they know what to change or why this was rejected.
+              </div>
               <textarea
                 bind:value={feedback}
                 placeholder="What needs to change? This is sent to the builder verbatim."
@@ -771,29 +869,12 @@
 
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
               <button
-                onclick={() => act('approve')}
+                onclick={() => act(decisionAction)}
                 disabled={acting}
-                style="background:#3d7a40; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
-              >Approve</button>
-
-              <button
-                onclick={() => act('request_changes')}
-                disabled={acting}
-                style="background:#2f6db0; color:#fff; border:2.5px solid #1c1714; border-radius:7px 10px 6px 11px/11px 6px 10px 7px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
-              >{showFeedBack ? 'Send changes' : 'Request changes'}</button>
-
-              <button
-                onclick={() => act('reject')}
-                disabled={acting}
-                style="background:#b3261e; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
-              > Reject</button>
-
-              {#if showFeedBack}
-                <button
-                  onclick={() => { showFeedBack = false; feedback = ''; actionMsg = ''; actionErr = '' }}
-                  style="background:transparent; color:#5b4f44; border:2px solid #1c1714; border-radius:8px; padding:9px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.78rem; cursor:pointer;"
-                >Cancel</button>
-              {/if}
+                style="background:{decisionAction === 'approve' ? '#3d7a40' : decisionAction === 'request_changes' ? '#2f6db0' : '#b3261e'}; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
+              >
+                {decisionAction === 'approve' ? 'Approve' : decisionAction === 'request_changes' ? 'Send changes request' : 'Reject'}
+              </button>
 
               {#if actionErr}
                 <span style="font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#b3261e;">{actionErr}</span>
@@ -937,16 +1018,190 @@
           </div>
         {/if}
       {/if}
-    </div>
+    </main>
   </div>
 {/if}
 
 <style>
+  .review-switcher {
+    display: inline-flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    padding: 5px;
+    border: 2px solid #1c1714;
+    border-radius: 14px 10px 13px 11px;
+    background: rgba(28, 23, 20, 0.06);
+  }
+
+  .review-switcher button { box-shadow: none !important; }
+
+  .review-overview {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-height: 48px;
+    margin-bottom: 18px;
+    padding: 9px 12px;
+    border: 2px solid rgba(28, 23, 20, 0.3);
+    border-radius: 12px;
+    background: rgba(251, 244, 230, 0.7);
+    color: #5b4f44;
+    font-size: 0.76rem;
+  }
+
+  .review-overview > div { display: flex; align-items: center; gap: 5px; }
+  .review-overview strong { color: #1c1714; font-family: 'Syne', sans-serif; font-size: 1rem; }
+  .overview-label { color: #9b3a18; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+  .overview-dot { width: 8px; height: 8px; border: 1px solid #1c1714; border-radius: 50%; }
+  .pending-dot { background: #ffb347; }
+  .changes-dot { background: #6c9fd3; }
+
+  .refresh-queue {
+    margin-left: auto;
+    padding: 6px 10px;
+    border: 0;
+    background: transparent;
+    color: #1c1714;
+    cursor: pointer;
+    font: 700 0.76rem 'Space Grotesk', sans-serif;
+  }
+
+  .refresh-queue:hover { color: #c2451a; }
+  .refresh-queue:disabled { cursor: wait; opacity: 0.55; }
+  .remote-search { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 16px; }
+
   .review-grid {
     display: grid;
-    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(290px, 360px) minmax(0, 1fr);
     gap: 20px;
     align-items: start;
+  }
+
+  .queue-panel {
+    position: sticky;
+    top: 132px;
+    overflow: hidden;
+  }
+
+  .queue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+  }
+
+  .queue-eyebrow {
+    display: block;
+    color: #c2451a;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+
+  .queue-title { margin-top: 2px; font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 800; }
+  .queue-total { padding: 4px 9px; border: 1.5px solid #1c1714; border-radius: 999px; background: #fffaf0; font-size: 0.68rem; font-weight: 800; }
+  .queue-tools { padding: 0 12px 12px; border-bottom: 2px dashed rgba(28, 23, 20, 0.25); }
+
+  .queue-search {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px;
+    border: 2px solid #1c1714;
+    border-radius: 9px 12px 8px 11px;
+    background: #fffaf0;
+  }
+
+  .queue-search:focus-within { box-shadow: 3px 3px 0 rgba(47, 109, 176, 0.35); }
+  .queue-search input { width: 100%; border: 0; outline: 0; background: transparent; color: #1c1714; font: 0.78rem 'Space Grotesk', sans-serif; }
+  .queue-filters { display: flex; gap: 5px; margin-top: 8px; }
+
+  .queue-filters button {
+    flex: 1;
+    padding: 5px 4px;
+    border: 1.5px solid rgba(28, 23, 20, 0.5);
+    border-radius: 6px;
+    background: transparent;
+    color: #5b4f44;
+    cursor: pointer;
+    font: 700 0.65rem 'Space Grotesk', sans-serif;
+  }
+
+  .queue-filters button.active { border-color: #1c1714; background: #1c1714; color: #fff; }
+  .queue-list { max-height: calc(100vh - 330px); min-height: 220px; overflow-y: auto; scrollbar-color: rgba(28, 23, 20, 0.35) transparent; }
+
+  .queue-item {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 13px 14px 13px 44px;
+    border: 0;
+    border-bottom: 2px dashed rgba(28, 23, 20, 0.18);
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font-family: 'Space Grotesk', sans-serif;
+    transition: background 0.12s ease, padding-left 0.12s ease;
+  }
+
+  .queue-item:hover { background: rgba(255, 69, 0, 0.06); }
+  .queue-item.selected { padding-left: 48px; background: rgba(255, 69, 0, 0.13); box-shadow: inset 5px 0 0 #ff4500; }
+  .queue-item:focus-visible { z-index: 1; outline: 3px solid #2f6db0; outline-offset: -3px; }
+  .queue-index { position: absolute; top: 14px; left: 14px; color: #9c8a6e; font: 700 0.62rem 'Syne', sans-serif; }
+
+  .queue-empty,
+  .review-empty-state { display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; }
+  .queue-empty { min-height: 180px; padding: 24px; color: #5b4f44; }
+  .queue-empty span { margin-top: 4px; font-size: 0.75rem; }
+  .review-detail { min-width: 0; overflow: hidden; }
+  .review-empty-state { min-height: 430px; padding: 48px; }
+  .review-empty-state strong { font: 800 1.1rem 'Syne', sans-serif; }
+  .review-empty-state p { max-width: 430px; margin: 8px 0 0; color: #5b4f44; font-size: 0.86rem; line-height: 1.55; }
+  .empty-mark { display: grid; place-items: center; width: 58px; height: 58px; margin-bottom: 15px; border: 2px solid #1c1714; border-radius: 50%; background: rgba(255, 69, 0, 0.13); color: #c2451a; font: 800 1.6rem 'Syne', sans-serif; box-shadow: 4px 4px 0 rgba(28, 23, 20, 0.15); }
+
+  .tracked-hours {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 12px;
+    padding: 11px 13px;
+    border: 2px solid #1c1714;
+    border-radius: 10px 7px 11px 8px;
+    background: #fffaf0;
+    box-shadow: 3px 3px 0 rgba(28, 23, 20, 0.13);
+  }
+
+  .tracked-hours-label {
+    display: block;
+    color: #1c1714;
+    font-size: 0.76rem;
+    font-weight: 800;
+  }
+
+  .tracked-hours-help {
+    display: block;
+    margin-top: 1px;
+    color: #7c6c5e;
+    font-size: 0.67rem;
+  }
+
+  .tracked-hours strong {
+    color: #c2451a;
+    font-family: 'Syne', sans-serif;
+    font-size: 1.35rem;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .hours-difference {
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(47, 109, 176, 0.12);
+    color: #2f6db0;
+    font-size: 0.7rem;
+    font-weight: 800;
   }
 
   .review-header {
@@ -958,9 +1213,23 @@
     border-bottom: 2px dashed rgba(28, 23, 20, 0.28);
   }
 
-  .review-heading {
-    min-width: 0;
+  .review-heading { min-width: 0; }
+
+  .selected-context {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 5px;
+    color: #8a796b;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
+
+  .selected-context > span + span::before { margin-right: 7px; color: #c7b7a0; content: '•'; }
+  .selected-status { padding: 2px 6px; border: 1px solid rgba(28, 23, 20, 0.35); border-radius: 999px; letter-spacing: 0.04em; }
+  .selected-context > .selected-status::before { content: none; }
 
   .selected-project-title,
   .selected-project-link {
@@ -1008,12 +1277,16 @@
   }
 
   @media (max-width: 860px) {
-    .review-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
+    .review-grid { grid-template-columns: minmax(0, 1fr); }
+    .queue-panel { position: static; }
+    .queue-list { max-height: 360px; }
   }
 
   @media (max-width: 560px) {
+    .review-overview { align-items: flex-start; flex-wrap: wrap; gap: 8px 14px; }
+    .refresh-queue { margin-left: 0; }
+    .review-switcher { display: flex; }
+    .review-switcher button { flex: 1; }
     .review-header {
       align-items: stretch;
       flex-direction: column;

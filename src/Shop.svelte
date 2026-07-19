@@ -18,9 +18,15 @@
     image_url: string | null
     stock: number | null
   }
+  
+  type ShopUser = {
+    name?: string
+    slack_id?: string
+    tokens: number
+  }
 
   let balance = $state(0)
-  let user = $state<null | { name?: string; slack_id?: string }>(null)
+  let user = $state<ShopUser | null>(null)
   let items = $state<Item[]>([])
   let itemsReady = $state(false)
   let itemsError = $state(false)
@@ -28,9 +34,17 @@
 
   onMount(async () => {
     try {
-      const r = await fetch('/api/auth/me')
-      if (r.ok) user = await r.json()
-    } catch {}
+      const r = await fetch('/api/auth/me', { credentials: 'include' })
+      if (r.ok) {
+        const data = (await r.json()) as ShopUser
+        user = data
+
+        const tokens = Number(data.tokens)
+        balance = Number.isFinite(tokens) ? tokens : 0
+      }
+    } catch {
+      balance = 0
+    }
     try {
       const r = await fetch('/api/shop/items')
       if (!r.ok) throw new Error()
