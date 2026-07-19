@@ -1,13 +1,13 @@
 # Omega YSWS
 
-Omega is an official [Hack Club](https://hackclub.com/) You Ship, We Ship program for young mobile developers. Build an Android, iOS, or cross-platform app and earn Ω tokens for rewards such as phones, developer licenses, and tools.
+Omega is an official [Hack Club](https://hackclub.com/) You Ship, We Ship program. Build an Android, iOS, or cross-platform app and earn Ω tokens for rewards such as phones, developer licenses, and tools.
 
 ## How it works
 
 1. Pitch your app idea and get it approved.
 2. Build for at least **20 hours**[can be changed when official launch], tracked with [Hackatime](https://hackatime.hackclub.com/).
-3. Submit a public repository, README, demo, and AI-use disclosure.
-4. Pass review and earn Ω tokens based on approved hours and project quality.
+3. Submit your project on <a href="omega.hackclub.com/submit">Omega Form</a>.
+4. Get your project approved and earn Ω tokens and gain a multiplier based on approved hours and project quality.
 5. Spend your tokens in the Omega shop.
 
 You can build for Android, iOS, or both. Participants may submit up to two projects, and the same work cannot be submitted to another YSWS.
@@ -26,7 +26,7 @@ You can build for Android, iOS, or both. Participants may submit up to two proje
 - Svelte 5, TypeScript, and Vite
 - Fastify API server
 - Airtable database
-- Hack Club OIDC and Hackatime OAuth
+- Hack Club Auth and Hackatime OAuth
 - GitHub API and Slack integrations
 
 ## Local development

@@ -1,7 +1,8 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
-import { createSignup, countSignups, listActiveShopItems } from './db.ts'
+import { createSignup, countSignups, listActiveShopItems, createShopOrder } from './db.ts'
+import { getSessionUser } from './auth.ts'
 import cookie from '@fastify/cookie'
 import { createReadStream } from 'node:fs'
 import { promises as fs } from 'node:fs'
@@ -137,6 +138,37 @@ app.get('/api/shop/items', async () => {
 app.get('/api/signup', async () => {
   return { count: await countSignups() }
 })
+
+app.post('/api/shop/order', async (req, reply) => {
+  const user = getSessionUser(req)
+  if (!user) return reply.code(401).send({ error: 'Not authenticated' })
+  
+  const body = (req.body ?? {}) as { itemId?: unknown; note?: string };
+  const itemId = String(body.itemId ?? '').trim()
+  const noteText = String(body.note ?? '').trim()
+
+  if (!itemId) {
+    return reply.code(400).send({ error: 'Invalid itemId' })
+  }
+
+  if (noteText.length > 500) {
+    return reply.code(400).send({ error: 'Note is too long' });
+  }
+
+  const result = await createShopOrder({
+    userSub: user.sub,
+    itemId,
+    note: noteText || null,
+  });
+
+  if (!result.ok) {
+    return reply.code(400).send({ error: result.error });
+  }
+
+  return result;
+})
+
+
 
 const port = Number(process.env.PORT ?? 3000)
 await app.listen({ port, host: '0.0.0.0' })

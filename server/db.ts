@@ -43,6 +43,9 @@ export type PayoutResult =
     | { ok: true; tokens: number; alreadyPaid: true }
     | { ok: false; error: string };
 
+export type ShopOrderResult =
+    | { ok: true; order: Row; tokens: number }
+    | { ok: false; error: string };
 
 type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
 export type Row = { id: string } & Record<string, unknown>;
@@ -298,6 +301,52 @@ export async function createShopItem(input: {
     return shopItemView(row);
 }
 
+export async function createShopOrder(input: {
+    userSub: string;
+    itemId: string;
+    note?: string | null;
+}): Promise<ShopOrderResult> {
+    const user = await findAuthUser(input.userSub);
+    if (!user) return { ok: false, error: "User not found" };
+
+    const item = await getRecordById(TABLE.shopItems, input.itemId);
+    if (!item) return { ok: false, error: "Item not found" };
+    if (!bool(item.active)) return { ok: false, error: "Item is not active" };
+
+    const cost = Number(item.cost ?? 0);
+    if (!Number.isFinite(cost) || cost < 0) { return { ok: false, error: "Item has invalid cost" }; }
+
+    const stock = item.stock == null ? null : Number(item.stock);
+    if (stock !== null && stock <= 0) { return { ok: false, error: "Item is out of stock" }; }
+
+    const note = String(input.note ?? "").trim() || null;
+
+    const order = await createRecord(TABLE.orders, {
+        user: [user.id],
+        user_sub: input.userSub,
+        item_name: item.name ?? "",
+        cost,
+        quantity: 1,
+        status: "pending",
+        shipping: null,
+        note,
+        tracking: null,
+        created_at: now(),
+    });
+
+    const charged = await adjustUserTokens(input.userSub, -cost, `Shop order ${order.id} for ${item.name ?? 'item'}`, null);
+    if (!charged.ok) {
+        await deleteRecord(TABLE.orders, order.id);
+        return { ok: false, error: `Failed to charge user: ${charged.error}` };
+    }
+
+    if (stock !== null) {
+        await updateRecord(TABLE.shopItems, String(item.id), { stock: Math.max(0, stock - 1) });
+    }
+
+    return { ok: true, order, tokens: charged.tokens };
+}
+
 export async function setShopItemActive(id: string, active: boolean): Promise<Row | null> {
     const row = await updateRecord(TABLE.shopItems, id, { active });
     return row ? { id: row.id, active: bool(row.active) } : null;
@@ -310,7 +359,11 @@ export async function deleteShopItem(id: string): Promise<boolean> {
 // --- Auth users -------------------------------------------------------------
 
 async function findAuthUser(sub: string): Promise<Row | null> {
-    return findOne(TABLE.authUsers, `{sub}='${esc(sub)}'`);
+    const rows = await listAll(TABLE.authUsers, {
+        filterByFormula: `{sub}='${esc(sub)}'`,
+        sort: [{ field: 'last_login', direction: 'desc' }],
+    });
+    return rows[0] ?? null;
 }
 
 function normalizeAddress(address: HcUser["address"] | undefined) {

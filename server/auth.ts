@@ -152,7 +152,7 @@ export default async function authRoutes(app: FastifyInstance) {
         }
         const meta = await getAuthUserMeta(user.sub);
         const role = isAdmin(user) ? 'admin' : meta.role;
-        return { ...user, role, banned: meta.banned };
+        return { ...user, role, banned: meta.banned, tokens: meta.tokens };
     })
 
     app.post('/api/auth/logout', async (_req, reply) => {

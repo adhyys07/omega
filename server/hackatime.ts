@@ -40,7 +40,7 @@ export default async function hackatimeRoutes(app: FastifyInstance) {
         return reply.redirect(url.toString());
     });
 
-    app.get('/api/auth/hackatime/callback', async (req, reply) => {
+    const handleCallback = async (req: any, reply: any) => {
         const user = getSessionUser(req);
         if (!user) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -55,7 +55,7 @@ export default async function hackatimeRoutes(app: FastifyInstance) {
             const tokenRes = await fetch(TOKEN_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body : new URLSearchParams({
+                body: new URLSearchParams({
                     grant_type: 'authorization_code',
                     code,
                     redirect_uri: process.env.HACKATIME_REDIRECT_URI!,
@@ -67,8 +67,8 @@ export default async function hackatimeRoutes(app: FastifyInstance) {
                 req.log.error({ status: tokenRes.status, body: await tokenRes.text() }, 'Hackatime token exchange failed');
                 return reply.code(502).send({ error: 'Hackatime token exchange failed' });
             }
-            
-             const tok = (await tokenRes.json()) as {
+
+            const tok = (await tokenRes.json()) as {
                 access_token: string; expires_in?: number; scope?: string;
             };
 
@@ -80,11 +80,15 @@ export default async function hackatimeRoutes(app: FastifyInstance) {
 
             reply.clearCookie(STATE_COOKIE, { path: '/' });
             return reply.redirect(process.env.FRONTEND_URL || "/");
-            }   catch (err) {
+        } catch (err) {
             req.log.error({ err }, 'Hackatime callback error');
             return reply.code(500).send({ error: 'Internal server error' });
         }
-    });
+    };
+
+    // Accept both callback paths so env drift or old links do not break auth.
+    app.get('/api/auth/hackatime/callback', handleCallback);
+    app.get('/api/hackatime/callback', handleCallback);
 
     app.get('/api/hackatime/projects', async (req, reply) => {
         const user = getSessionUser(req);

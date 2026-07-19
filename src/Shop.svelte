@@ -9,7 +9,7 @@
   }
 
   type Item = {
-    id: number
+    id: string
     slug: string
     name: string
     description: string
@@ -38,11 +38,52 @@
   let itemsReady = $state(false)
   let itemsError = $state(false)
   let active = $state('All')
+  let fulfillerNote = $state('')
+  let purchasingId = $state<string | null>(null)
+  let shopMessage = $state('')
+  let shopError = $state('')
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
     user = null
     location.reload()
+  }
+
+  async function loadItems() {
+    const r = await fetch('/api/shop/items')
+    if (!r.ok) throw new Error()
+    items = await r.json()
+  }
+
+  async function purchase(item: Item) {
+    if (purchasingId !== null) return
+    if (item.stock !== null && item.stock <= 0) return
+    if (balance < item.cost) return
+
+    purchasingId = item.id
+    shopMessage = ''
+    shopError = ''
+
+    try {
+      const r = await fetch('/api/shop/order', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: item.id, note: fulfillerNote.trim() || null }),
+      })
+      const data = await r.json().catch(() => ({})) as { error?: string; tokens?: number }
+      if (!r.ok) throw new Error(data.error ?? 'Purchase failed')
+
+      balance = Number.isFinite(Number(data.tokens)) ? Number(data.tokens) : Math.max(0, balance - item.cost)
+      fulfillerNote = ''
+      shopMessage = 'Order placed - the fulfiller can now see your note.'
+
+      await loadItems()
+    } catch (err) {
+      shopError = err instanceof Error ? err.message : 'Purchase failed'
+    } finally {
+      purchasingId = null
+    }
   }
 
   onMount(async () => {
@@ -59,9 +100,7 @@
       balance = 0
     }
     try {
-      const r = await fetch('/api/shop/items')
-      if (!r.ok) throw new Error()
-      items = await r.json()
+      await loadItems()
     } catch {
       itemsError = true
     } finally {
@@ -133,6 +172,28 @@
     {:else if shown.length === 0}
       <p style="color:#5b4f44;">Nothing in this category yet.</p>
     {:else}
+      <div style="margin-bottom:16px; padding:14px 16px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:16px 11px 15px 12px/12px 15px 11px 16px; box-shadow:4px 4px 0 rgba(28,23,20,.13);">
+        <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#1c1714;">
+          Note for fulfiller (optional)
+          <div style="font-size:.72rem; color:#5b4f44; font-weight:600; margin-top:2px;">
+            Add any helpful order details before placing a purchase.
+          </div>
+          <textarea
+            bind:value={fulfillerNote}
+            rows="3"
+            maxlength="500"
+            placeholder="Example: please ping me in Slack before shipping."
+            style="width:100%; box-sizing:border-box; margin-top:6px; padding:11px 13px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.85rem; background:#fffaf0; color:#1c1714; outline:none; resize:vertical;"
+          ></textarea>
+        </label>
+
+        {#if shopError}
+          <div style="margin-top:8px; color:#b3261e; font-size:.8rem; font-weight:700;">{shopError}</div>
+        {:else if shopMessage}
+          <div style="margin-top:8px; color:#3d7a40; font-size:.8rem; font-weight:700;">{shopMessage}</div>
+        {/if}
+      </div>
+
       <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:18px;">
         {#each shown as item, i (item.id)}
           {@const c = CAT[item.category]}
@@ -154,9 +215,10 @@
             <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px;">
               <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.2rem;"><span style="color:var(--orange);">⏣</span> {item.cost}</div>
               <button
-                disabled={soldOut || balance < item.cost}
+                onclick={() => purchase(item)}
+                disabled={purchasingId === item.id || soldOut || balance < item.cost}
                 style="background:{soldOut || balance < item.cost ? '#d8cbb0' : 'var(--orange)'}; color:#fff; border:2.5px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; padding:9px 16px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.82rem; cursor:{soldOut || balance < item.cost ? 'not-allowed' : 'pointer'}; box-shadow:3px 3px 0 #1c1714;"
-              >{soldOut ? 'Sold out' : balance < item.cost ? 'Locked' : 'Redeem'}</button>
+              >{purchasingId === item.id ? 'Placing…' : soldOut ? 'Sold out' : balance < item.cost ? 'Locked' : 'Purchase'}</button>
             </div>
           </div>
         {/each}
