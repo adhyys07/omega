@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import ProfilePopover from './ProfilePopover.svelte'
 
   function go(path: string, e: MouseEvent) {
     e.preventDefault()
@@ -21,7 +22,13 @@
   
   type ShopUser = {
     name?: string
+    email?: string
     slack_id?: string
+    role?: string
+    banned?: boolean
+    birthdate?: string
+    verification_status?: string
+    ysws_eligible?: boolean
     tokens: number
   }
 
@@ -31,6 +38,12 @@
   let itemsReady = $state(false)
   let itemsError = $state(false)
   let active = $state('All')
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    user = null
+    location.reload()
+  }
 
   onMount(async () => {
     try {
@@ -93,14 +106,7 @@
       <div style="display:inline-flex; align-items:center; gap:8px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:100px; padding:8px 16px; font-weight:700; box-shadow:3px 3px 0 rgba(28,23,20,.13);">
         <span style="color:var(--orange);">⏣</span> {balance} <span style="font-size:.8rem; color:#5b4f44;">tokens</span>
       </div>
-      {#if user?.slack_id}
-        <img
-          src={`https://cachet.dunkirk.sh/users/${user.slack_id}/r`}
-          alt={user.name ?? 'Profile'}
-          referrerpolicy="no-referrer"
-          style="width:42px; height:42px; border-radius:50%; border:2.5px solid #1c1714; box-shadow:3px 3px 0 #1c1714; object-fit:cover; background:#fbf4e6;"
-        />
-      {/if}
+      <ProfilePopover user={user} size={42} onSignOut={logout} />
     </div>
   </header>
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import ProfilePopover from './ProfilePopover.svelte'
   import Shop from './Shop.svelte'
   import Admin from './Admin.svelte'
   import Banned from './Banned.svelte'
@@ -12,8 +13,6 @@
   let h = $state('00')
   let m = $state('00')
   let s = $state('00')
-
-  let menuOpen = $state(false)
 
   const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -33,7 +32,7 @@
   })
 
   // --- Auth ---
-  let user = $state<null | { name?: string; slack_id?: string; role?: string; banned?: boolean; birthdate?: string }>(null)
+  let user = $state<null | { name?: string; email?: string; slack_id?: string; role?: string; banned?: boolean; birthdate?: string; verification_status?: string; ysws_eligible?: boolean }>(null)
   let authReady = $state(false)
   let isAdmin = $state(false)
 
@@ -44,45 +43,6 @@
     const t = new Date()
     return Number(mm) === t.getMonth() + 1 && Number(dd) === t.getDate()
   })
-
-  // --- Hackatime ---
-  type HtProject = { name?: string; text?: string; total_seconds?: number; first_heartbeat?: string | null }
-  let htProjects = $state<HtProject[]>([])
-  let htLoaded = $state(false)
-  let htLoading = $state(false)
-  let htLinked = $state(true)   // flips false on a 404 (token not stored yet)
-  let htError = $state(false)
-
-  const PROJECTS_SINCE = '2026-07-27'
-  const PROJECTS_SINCE_LABEL = new Date(`${PROJECTS_SINCE}T00:00:00`).toLocaleDateString(undefined, {
-    year: 'numeric', month: 'long', day: 'numeric',
-  })
-  const fmtProjectDate = (iso?: string | null) => {
-    if (!iso) return ''
-    const d = new Date(iso)
-    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-  }
-
-  async function loadHackatimeProjects() {
-    htLoading = true
-    htError = false
-    try {
-      const r = await fetch('/api/hackatime/projects')
-      if (r.status === 404) { htLinked = false; htLoaded = true; return }
-      if (!r.ok) throw new Error()
-      const data = await r.json()
-      // Response shape varies; accept a bare array or a { data|projects } wrapper.
-      htProjects = Array.isArray(data) ? data : (data.data ?? data.projects ?? [])
-      htLinked = true
-      htLoaded = true
-    } catch {
-      htError = true
-    } finally {
-      htLoading = false
-    }
-  }
-
-  const fmtHours = (s?: number) => (s ? `${Math.round((s / 3600) * 10) / 10}h` : '')
 
   onMount(async () => {
     try {
@@ -268,8 +228,6 @@
   const tickerItems = ['You Ship', 'We Ship', 'Android', 'iOS', 'Build & Ship', 'Earn Badges', 'Shop Rewards', '20+ Hours', 'Tier System']
 </script>
 
-<svelte:window onclick={() => (menuOpen = false)} />
-
 {#if authReady && user?.banned}
   <Banned />
 {:else if path === '/shop'}
@@ -294,87 +252,7 @@
 
   {#if user}
     <div style="position:fixed; top:16px; right:18px; z-index:70; display:flex; align-items:center; gap:10px;">
-
-      <button
-        onclick={(e) => { e.stopPropagation(); menuOpen = !menuOpen }}
-        title={user.name ?? 'Account'}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        style="padding:0; border:none; background:none; cursor:pointer; line-height:0; border-radius:50%;"
-        >
-        {#if user.slack_id}
-          <img
-            src={`https://cachet.dunkirk.sh/users/${user.slack_id}/r`}
-            alt={user.name || 'Profile'}
-            referrerpolicy="no-referrer"
-            loading="lazy"
-            style="width:68px; height:68px; border-radius:50%; border:3px solid #1c1714; box-shadow:4px 4px 0 #1c1714; object-fit:cover; background:#fbf4e6; display:block;"
-          />
-        {:else}
-          <div style="width:68px; height:68px; border-radius:50%; border:3px solid #1c1714; box-shadow:4px 4px 0 #1c1714; background:var(--orange); color:#fff; display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem;">
-            {(user.name ?? '?').charAt(0).toUpperCase()}
-          </div>
-        {/if}
-        </button>
-
-      {#if menuOpen}
-      <div style="position:absolute; top:84px; right:0; min-width:180px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:14px 9px 15px 10px/10px 15px 9px 14px; box-shadow:5px 5px 0 #1c1714; padding:10px; display:flex; flex-direction:column; gap:8px;">
-        {#if isAdmin}
-          <a
-            href="/admin"
-            title="Admin panel"
-            style="display:inline-flex; align-items:center; gap:6px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:8px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; cursor:pointer; box-shadow:3px 3px 0 rgba(28,23,20,.2); text-decoration:none;"
-          >✦ Admin panel</a>
-        {/if}
-        <a
-          href="/api/hackatime/login"
-          title="Connect your Hackatime account"
-          style="display:inline-flex; align-items:center; gap:6px; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:8px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; cursor:pointer; box-shadow:3px 3px 0 rgba(28,23,20,.2); text-decoration:none;"
-        >⏱ Connect Hackatime</a>
-        <button
-          onclick={(e) => { e.stopPropagation(); loadHackatimeProjects() }}
-          title="Load my Hackatime projects"
-          style="display:inline-flex; align-items:center; gap:6px; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:8px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; cursor:pointer; box-shadow:3px 3px 0 rgba(28,23,20,.2);"
-        >{htLoading ? 'Loading…' : 'My projects'}</button>
-
-        {#if htLoaded}
-          {#if !htLinked}
-            <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#5b4f44; padding:2px 4px;">Not linked yet — hit “Connect Hackatime” first.</div>
-          {:else if htProjects.length}
-            <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#5b4f44; padding:2px 4px 6px;">
-              Showing projects started on or after <strong>{PROJECTS_SINCE_LABEL}</strong>.
-            </div>
-            <div style="max-height:180px; overflow:auto; display:flex; flex-direction:column; gap:4px; border-top:2px dashed #1c1714; padding-top:8px;">
-              {#each htProjects as p}
-                <div style="display:grid; gap:2px; font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#1c1714; padding:2px 0;">
-                  <div style="display:flex; justify-content:space-between; gap:10px;">
-                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{p.name ?? 'Untitled'}</span>
-                    <span style="color:#5b4f44; flex:none;">{p.text ?? fmtHours(p.total_seconds)}</span>
-                  </div>
-                  <div style="display:flex; justify-content:space-between; gap:10px; font-size:.68rem; color:#5b4f44;">
-                    <span>{p.first_heartbeat ? `Started ${fmtProjectDate(p.first_heartbeat)}` : 'No start date'}</span>
-                    {#if (p.total_seconds ?? 0) < 20 * 60 * 60}
-                      <span style="color:#b07410; font-weight:700;">Need 20h to submit</span>
-                    {/if}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#5b4f44; padding:2px 4px;">No projects found.</div>
-          {/if}
-        {/if}
-        {#if htError}
-          <div style="font-family:'Space Grotesk',sans-serif; font-size:.72rem; color:#c2451a; padding:2px 4px;">Couldn’t load projects — try again.</div>
-        {/if}
-
-        <button
-          onclick={logout}
-          title="Sign out"
-          style="display:inline-flex; align-items:center; gap:6px; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:8px 14px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; cursor:pointer; box-shadow:3px 3px 0 rgba(28,23,20,.2);"
-        >Sign out</button>
-      </div>
-    {/if}
+      <ProfilePopover user={user} isAdmin={isAdmin} onSignOut={logout} />
     </div>
   {/if}
 
