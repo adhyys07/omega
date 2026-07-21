@@ -3,6 +3,7 @@
   import ProfilePopover from './ProfilePopover.svelte'
   import Shop from './Shop.svelte'
   import Admin from './Admin.svelte'
+  import Forbidden from './Forbidden.svelte'
   import Banned from './Banned.svelte'
   import Docs from './Docs.svelte'
   import Submit from './Submit.svelte'
@@ -233,7 +234,15 @@
 {:else if path === '/shop'}
   <Shop />
 {:else if path.startsWith('/admin')}
-  <Admin />
+  {#if !authReady}
+    <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; color:#5b4f44; background:#f4ead5;">Checking admin access…</div>
+  {:else if !user}
+    <Forbidden signedIn={false} />
+  {:else if !isAdmin}
+    <Forbidden signedIn={true} />
+  {:else}
+    <Admin />
+  {/if}
 {:else if path === '/docs'}
   <Docs />
 {:else if path === '/submit'}

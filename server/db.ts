@@ -403,11 +403,6 @@ export async function upsertAuthUser(u: HcUser): Promise<void> {
         slack_id: u.slack_id ?? null,
         phone_number: u.phone_number ?? null,
         address: address.address,
-        street_address: address.street_address,
-        locality: address.locality,
-        region: address.region,
-        postal_code: address.postal_code,
-        country: address.country,
         birthdate: u.birthdate ?? null,
         last_login: now(),
     };
