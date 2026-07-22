@@ -9,8 +9,9 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.server.json",
     "start": "node --import tsx server/index.ts",
-    "server": "node --env-file=.env --import tsx server/index.ts",
-    "server:watch": "node --env-file=.env --import tsx --watch server/index.ts"
+        "server": "node --env-file=.env --import tsx server/index.ts",
+    "server:watch": "node --env-file=.env --import tsx --watch server/index.ts",
+    "cleanup:review": "node --env-file=.env --import tsx server/cleanup-review-data.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",

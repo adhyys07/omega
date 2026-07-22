@@ -968,3 +968,66 @@ export async function wipeSeeded(sub: string): Promise<{ pitches: number; submis
     for (const r of pitches) await deleteRecord(TABLE.pitches, String(r.id));
     return { pitches: pitches.length, submissions: submissions.length };
 }
+
+export type ReviewDataCleanupOptions = {
+    scope?: 'all' | 'seeded' | 'user';
+    userSub?: string;
+    dryRun?: boolean;
+};
+
+export async function cleanupReviewData(options: ReviewDataCleanupOptions = {}): Promise<{
+    scope: 'all' | 'seeded' | 'user';
+    dryRun: boolean;
+    pitches: number;
+    submissions: number;
+    yswsRows: number;
+}> {
+    const scope = options.scope ?? 'all';
+    const dryRun = options.dryRun !== false;
+
+    let pitchFormula = '';
+    let submissionFormula = '';
+
+    if (scope === 'seeded') {
+        pitchFormula = '{seeded}=1';
+        submissionFormula = '{seeded}=1';
+    } else if (scope === 'user') {
+        if (!options.userSub) throw new Error('userSub is required when scope=user');
+        const sub = esc(options.userSub);
+        pitchFormula = `{user_sub}='${sub}'`;
+        submissionFormula = `{user_sub}='${sub}'`;
+    }
+
+    const [pitches, submissions] = await Promise.all([
+        listAll(TABLE.pitches, pitchFormula ? { filterByFormula: pitchFormula } : {}),
+        listAll(TABLE.projectSubmissions, submissionFormula ? { filterByFormula: submissionFormula } : {}),
+    ]);
+
+    const yswsIds = [...new Set(
+        submissions
+            .map((s) => String(s.ysws_record_id ?? '').trim())
+            .filter(Boolean),
+    )];
+
+    if (!dryRun) {
+        // Submissions are removed before pitches to avoid leaving dangling pitch_id pointers.
+        for (const s of submissions) await deleteRecord(TABLE.projectSubmissions, String(s.id));
+        for (const p of pitches) await deleteRecord(TABLE.pitches, String(p.id));
+        // Best effort: skip missing YSWS rows and keep cleanup moving.
+        for (const yid of yswsIds) {
+            try {
+                await deleteRecord(TABLE.yswsSubmissions, yid);
+            } catch {
+                // Ignore failures from external table drift.
+            }
+        }
+    }
+
+    return {
+        scope,
+        dryRun,
+        pitches: pitches.length,
+        submissions: submissions.length,
+        yswsRows: yswsIds.length,
+    };
+}

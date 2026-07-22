@@ -9,7 +9,7 @@ import {
 import {
     fetchThreadReplies, postReviewerMessage, dmUser, postInThread, updateReviewCard,
     editLink, pitchEditLink, frontendUrl, postBuilderControls,
-    type ReviewKind, type SubmissionState,
+        type ReviewKind, type SubmissionState,
     type Actor,
     mention, isReviewer,
 } from "./slack.ts";
@@ -246,6 +246,7 @@ export default async function reviewRoutes(app: FastifyInstance) {
         return rows.map((r) => ({
             id: r.id,
             title: r.title ?? null,
+            user_sub: r.user_sub ?? null,
             status: r.status,
             code_url: r.code_url ?? null,
             demo_video_url: r.demo_video_url ?? null,
@@ -307,6 +308,7 @@ export default async function reviewRoutes(app: FastifyInstance) {
     return filtered.map((r) => ({
         id: r.id,
         title: r.title ?? null,
+        user_sub: r.user_sub ?? null,
         status: r.status ?? 'pending',
         description: r.description ?? null,
         why: r.why ?? null,

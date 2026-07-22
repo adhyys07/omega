@@ -11,7 +11,7 @@ import {
     listAuthUsers,
     getAuthUserBySub,
     setAuthUserRole,
-    setAuthUserBanned,
+        setAuthUserBanned,
     adjustUserTokens,
 } from "./db.ts";
 
@@ -77,6 +77,9 @@ export default async function adminRoutes(app: FastifyInstance) {
         }
         return { sub, tokens: result.tokens };
     });
+
+    
+
     
 
 

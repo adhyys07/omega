@@ -345,10 +345,13 @@ function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, byLine
                 ? [
                     { type: 'mrkdwn', text: `*Idea:*\n${row.title ?? '—'}` },
                     { type: 'mrkdwn', text: `*By:*\n${`${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || '—'}` },
+                    { type: 'mrkdwn', text: `*Submitter ID:*\n${row.user_sub ?? '—'}` },
                 ]
                 : [
                     { type: 'mrkdwn', text: `*Project:*\n${row.title ?? '—'}` },
-                    { type: 'mrkdwn', text: `*By:*\n${byLine}` },                    { type: 'mrkdwn', text: `*Code:*\n${row.code_url || '—'}` },
+                    { type: 'mrkdwn', text: `*By:*\n${byLine}` },
+                    { type: 'mrkdwn', text: `*Submitter ID:*\n${row.user_sub ?? '—'}` },
+                    { type: 'mrkdwn', text: `*Code:*\n${row.code_url || '—'}` },
                     { type: 'mrkdwn', text: `*Playable:*\n${row.playable_url || '—'}` },
                 ],
         },

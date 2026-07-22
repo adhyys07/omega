@@ -227,8 +227,14 @@ export default async function submissionRoutes(app: FastifyInstance) {
                     await postInThread(channel, ts, `✏️ <@${payload.user.id}> requested changes:\n>${quoted}`);
                     await updateReviewCard(kind, channel, ts, row, "changes_requested", payload.user.id);
 
-                    const slackId = await getSlackIdForSub(String(row.user_sub));
+                                        const slackId = await getSlackIdForSub(String(row.user_sub));
                     if (slackId) {
+                        await postBuilderControls(
+                            kind,
+                            { ...row, slack_channel: channel, slack_ts: ts },
+                            "changes_requested",
+                            slackId,
+                        );
                         const link = isPitch ? pitchEditLink(id) : editLink(id);
                         await dmUser(slackId, `Your Omega ${isPitch ? "pitch" : "submission"} *${row.title}* needs changes:\n\n>${quoted}\n\nReship it here: ${link}`);
                     }
@@ -255,21 +261,15 @@ export default async function submissionRoutes(app: FastifyInstance) {
         // gate is below — the clicker's Slack id must match the row's owner.
         // This branch must precede the isReviewer check, which would otherwise turn
         // the builder away from their own controls.
-        if (BUILDER_ACTIONS.has(String(action.action_id))) {
+                if (BUILDER_ACTIONS.has(String(action.action_id))) {
             reply.code(200).send();   // ack inside Slack's 3s window, then work
-
-            // A url button still fires an interaction. Ack it and do nothing else —
-            // Slack has already opened the edit page for them.
-            if (action.action_id === "builder_reship") return;
 
             void (async () => {
                 try {
                     const row = isPitch ? await getPitchById(id) : await getSubmissionById(id);
                     if (!row) return;
 
-                    // ── THE GATE ────────────────────────────────────────────────
-                    // Resolve the owner from the ROW, never from the payload: the
-                    // payload is the untrusted half of this exchange.
+                    // Visibility is only UX. Ownership is always checked from the row.
                     const ownerSlackId = await getSlackIdForSub(String(row.user_sub));
                     const clicker = String(payload.user?.id ?? "");
                     if (!ownerSlackId || ownerSlackId !== clicker) {
@@ -279,9 +279,20 @@ export default async function submissionRoutes(app: FastifyInstance) {
                         );
                         return;
                     }
-                    // ────────────────────────────────────────────────────────────
 
                     const state = String(row.status ?? "pending");
+                    if (action.action_id === "builder_reship") {
+                        if (state !== "changes_requested") {
+                            await respondEphemeral(
+                                payload.response_url,
+                                `This ${isPitch ? "pitch" : "submission"} cannot be reshipped because it is ${state}.`,
+                            );
+                        }
+                        // Slack already opened the URL. The website independently checks
+                        // the signed-in account and status before loading or saving edits.
+                        return;
+                    }
+
                     if (state !== "pending" && state !== "changes_requested") {
                         await respondEphemeral(
                             payload.response_url,

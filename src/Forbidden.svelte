@@ -14,7 +14,7 @@
 
     {#if signedIn}
       <p style="font-size:1rem; color:#5b4f44; margin:18px auto 0; max-width:460px; line-height:1.6;">
-        This area is restricted to Omega admins. Your account is signed in, but it does not have admin permissions.
+        This area is restricted to Omega admins. You don't have appropriate permissions to access this thing!.
       </p>
     {:else}
       <p style="font-size:1rem; color:#5b4f44; margin:18px auto 0; max-width:460px; line-height:1.6;">

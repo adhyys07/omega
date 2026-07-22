@@ -4,6 +4,7 @@
   type Sub = {
     id: string
     title: string | null
+    user_sub: string | null
     status: string
     first_name: string | null
     last_name: string | null
@@ -428,7 +429,7 @@
     const query = queueSearch.trim().toLowerCase()
     return subs.filter((s) => {
       const matchesStatus = queueStatus === 'all' || s.status === queueStatus
-      const haystack = `${s.title ?? ''} ${s.first_name ?? ''} ${s.last_name ?? ''}`.toLowerCase()
+      const haystack = `${s.title ?? ''} ${s.first_name ?? ''} ${s.last_name ?? ''} ${s.user_sub ?? ''}`.toLowerCase()
       return matchesStatus && (!query || haystack.includes(query))
     })
   })
@@ -526,6 +527,9 @@
                 {STATUS_LABEL[s.status] ?? s.status}
               </span>
               <span style="font-size:.72rem; color:#5b4f44;">{who(s)}</span>
+              {#if s.user_sub}
+                <span style="font-size:.7rem; color:#5b4f44; font-family:monospace;">· id: {s.user_sub}</span>
+              {/if}
               {#if s.created_at}
                 <span title={fmtDate(s.created_at)} style="font-size:.72rem; color:#5b4f44;">· {fmtDay(s.created_at)}</span>
               {/if}
@@ -570,6 +574,7 @@
             {/if}
             <div class="review-meta">
               {who(selected)}
+              {#if selected.user_sub} · <span style="font-family:monospace;">id: {selected.user_sub}</span>{/if}
               {#if selected.created_at} · <span title="Submitted">🕘 {fmtDate(selected.created_at)}</span>{/if}
               {#if selected.hackatime_hours} · {selected.hackatime_hours}h{/if}
             </div>
