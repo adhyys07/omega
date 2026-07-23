@@ -38,6 +38,7 @@
   let itemsReady = $state(false)
   let itemsError = $state(false)
   let active = $state('All')
+  let pendingPurchase = $state<Item | null>(null)
   let fulfillerNote = $state('')
   let purchasingId = $state<string | null>(null)
   let shopMessage = $state('')
@@ -55,14 +56,22 @@
     items = await r.json()
   }
 
-  async function purchase(item: Item) {
+  function openPurchaseDialog(item: Item) {
     if (purchasingId !== null) return
     if (item.stock !== null && item.stock <= 0) return
     if (balance < item.cost) return
-
-    purchasingId = item.id
+    pendingPurchase = item
+    fulfillerNote = ''
     shopMessage = ''
     shopError = ''
+  }
+
+  async function confirmPurchase() {
+    if (!pendingPurchase) return
+    if (purchasingId !== null) return
+
+    const item = pendingPurchase
+    purchasingId = item.id
 
     try {
       const r = await fetch('/api/shop/order', {
@@ -77,6 +86,7 @@
       balance = Number.isFinite(Number(data.tokens)) ? Number(data.tokens) : Math.max(0, balance - item.cost)
       fulfillerNote = ''
       shopMessage = 'Order placed - the fulfiller can now see your note.'
+      pendingPurchase = null
 
       await loadItems()
     } catch (err) {
@@ -84,6 +94,13 @@
     } finally {
       purchasingId = null
     }
+  }
+
+  function closePurchaseDialog() {
+    pendingPurchase = null
+    fulfillerNote = ''
+    shopMessage = ''
+    shopError = ''
   }
 
   onMount(async () => {
@@ -172,28 +189,6 @@
     {:else if shown.length === 0}
       <p style="color:#5b4f44;">Nothing in this category yet.</p>
     {:else}
-      <div style="margin-bottom:16px; padding:14px 16px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:16px 11px 15px 12px/12px 15px 11px 16px; box-shadow:4px 4px 0 rgba(28,23,20,.13);">
-        <label style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#1c1714;">
-          Note for fulfiller (optional)
-          <div style="font-size:.72rem; color:#5b4f44; font-weight:600; margin-top:2px;">
-            Add any helpful order details before placing a purchase.
-          </div>
-          <textarea
-            bind:value={fulfillerNote}
-            rows="3"
-            maxlength="500"
-            placeholder="Example: please ping me in Slack before shipping."
-            style="width:100%; box-sizing:border-box; margin-top:6px; padding:11px 13px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.85rem; background:#fffaf0; color:#1c1714; outline:none; resize:vertical;"
-          ></textarea>
-        </label>
-
-        {#if shopError}
-          <div style="margin-top:8px; color:#b3261e; font-size:.8rem; font-weight:700;">{shopError}</div>
-        {:else if shopMessage}
-          <div style="margin-top:8px; color:#3d7a40; font-size:.8rem; font-weight:700;">{shopMessage}</div>
-        {/if}
-      </div>
-
       <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:18px;">
         {#each shown as item, i (item.id)}
           {@const c = CAT[item.category]}
@@ -215,7 +210,7 @@
             <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px;">
               <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.2rem;"><span style="color:var(--orange);">⏣</span> {item.cost}</div>
               <button
-                onclick={() => purchase(item)}
+                onclick={() => openPurchaseDialog(item)}
                 disabled={purchasingId === item.id || soldOut || balance < item.cost}
                 style="background:{soldOut || balance < item.cost ? '#d8cbb0' : 'var(--orange)'}; color:#fff; border:2.5px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; padding:9px 16px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.82rem; cursor:{soldOut || balance < item.cost ? 'not-allowed' : 'pointer'}; box-shadow:3px 3px 0 #1c1714;"
               >{purchasingId === item.id ? 'Placing…' : soldOut ? 'Sold out' : balance < item.cost ? 'Locked' : 'Purchase'}</button>
@@ -225,6 +220,62 @@
       </div>
     {/if}
   </div>
+
+  {#if pendingPurchase}
+    <div
+      role="presentation"
+      style="position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:20px; z-index:1000; animation:fadeIn .2s ease;"
+      onclick={closePurchaseDialog}
+    >
+      <div
+        role="dialog"
+        tabindex="0"
+        style="background:#fff; padding:32px; border-radius:20px; max-width:420px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.3); animation:popupSlideIn .3s ease;"
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => e.key === 'Escape' && closePurchaseDialog()}
+      >
+        <div style="margin-bottom:20px;">
+          <div style="font-family:'Syne',sans-serif; font-size:1.25rem; font-weight:800; color:#1c1714; margin-bottom:4px;">Order: {pendingPurchase.name}</div>
+          <div style="font-size:.9rem; color:#5b4f44; line-height:1.6;">{pendingPurchase.description}</div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label for="fulfiller-note" style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.85rem; font-weight:700; color:#1c1714; margin-bottom:6px;">
+            Note for fulfiller (optional)
+            <div style="font-size:.75rem; color:#5b4f44; font-weight:600; margin-top:2px;">
+              Add any helpful order details like color, size, or delivery instructions.
+            </div>
+          </label>
+          <textarea
+            id="fulfiller-note"
+            bind:value={fulfillerNote}
+            rows="3"
+            maxlength="500"
+            placeholder="Example: please ping me in Slack before shipping."
+            style="width:100%; box-sizing:border-box; padding:11px 13px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.85rem; background:#fffaf0; color:#1c1714; outline:none; resize:vertical;"
+          ></textarea>
+        </div>
+
+        {#if shopError}
+          <div style="margin-bottom:16px; color:#b3261e; font-size:.85rem; font-weight:700;">{shopError}</div>
+        {:else if shopMessage}
+          <div style="margin-bottom:16px; color:#3d7a40; font-size:.85rem; font-weight:700;">{shopMessage}</div>
+        {/if}
+
+        <div style="display:flex; gap:10px;">
+          <button
+            onclick={closePurchaseDialog}
+            style="flex:1; padding:12px; background:#fbf4e6; color:#1c1714; border:2px solid #1c1714; border-radius:10px; cursor:pointer; font-weight:600; font-size:.9rem; font-family:'Space Grotesk',sans-serif;"
+          >Cancel</button>
+          <button
+            onclick={confirmPurchase}
+            disabled={purchasingId !== null}
+            style="flex:1; padding:12px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:8px; cursor:{purchasingId !== null ? 'wait' : 'pointer'}; font-weight:700; font-size:.9rem; font-family:'Space Grotesk',sans-serif; box-shadow:3px 3px 0 #1c1714; opacity:{purchasingId !== null ? '.7' : '1'};"
+          >{purchasingId ? 'Placing…' : 'Confirm purchase'}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>

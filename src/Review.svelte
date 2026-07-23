@@ -6,6 +6,7 @@
     title: string | null
     submitter_name: string | null
     submitter_email: string | null
+    submitter_slack_id: string | null
     submitter_slack_username: string | null
     status: string
     first_name: string | null
@@ -46,6 +47,7 @@
   const apiFetch = (input: string, init: RequestInit = {}) =>
     fetch(input, { credentials: 'include', ...init })
 
+  const SLACK_TEAM_URL = 'https://hackclub.slack.com/team/'
 
   let gh = $state<{ check: GhCheck | null; readme: Readme | null } | null>(null)
 
@@ -529,8 +531,8 @@
                 {STATUS_LABEL[s.status] ?? s.status}
               </span>
               <span style="font-size:.72rem; color:#5b4f44;">{who(s)}</span>
-              {#if s.submitter_slack_username}
-                <span style="font-size:.7rem; color:#5b4f44;">· @{s.submitter_slack_username.replace(/^@/, '')}</span>
+              {#if s.submitter_slack_id}
+                <a href={`${SLACK_TEAM_URL}${s.submitter_slack_id}`} target="_blank" rel="noopener" style="font-size:.7rem; color:var(--orange); text-decoration:underline; text-decoration-style:wavy; text-underline-offset:2px;">· @{s.submitter_slack_username?.replace(/^@/, '') ?? s.submitter_slack_id}</a>
               {/if}
               {#if s.submitter_email}
                 <span style="font-size:.7rem; color:#5b4f44;">· {s.submitter_email}</span>
@@ -579,7 +581,9 @@
             {/if}
             <div class="review-meta">
               {who(selected)}
-              {#if selected.submitter_slack_username} · @{selected.submitter_slack_username.replace(/^@/, '')}{/if}
+              {#if selected.submitter_slack_id}
+                <a href={`${SLACK_TEAM_URL}${selected.submitter_slack_id}`} target="_blank" rel="noopener" style="color:var(--orange); text-decoration:underline; text-decoration-style:wavy; text-underline-offset:2px;"> · @{selected.submitter_slack_username?.replace(/^@/, '') ?? selected.submitter_slack_id}</a>
+              {/if}
               {#if selected.submitter_email} · {selected.submitter_email}{/if}
               {#if selected.created_at} · <span title="Submitted">🕘 {fmtDate(selected.created_at)}</span>{/if}
               {#if selected.hackatime_hours} · {selected.hackatime_hours}h{/if}

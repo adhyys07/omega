@@ -3,13 +3,14 @@
 
   // Step 01 of the flow: propose the idea before spending 20+ hours building it.
   // A reviewer approves the pitch, which is what unlocks project submission.
-  let f = $state({ title: '', description: '', why: '' })
+  let f = $state({ title: '', description: '', why: '', reference_file_url: '' })
 
   type Pitch = {
     id: string
     title: string | null
     description: string | null
     why: string | null
+    reference_file_url: string | null
     status: string
     review_feedback: string | null
     created_at: string | null
@@ -22,6 +23,10 @@
   let submitting = $state(false)
   let done = $state(false)
   let error = $state('')
+  let uploading = $state(false)
+  let uploadError = $state('')
+
+  const ACCEPT_DOCS = 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain'
 
   // Reship mode: /pitch?edit=recXXX prefills and PATCHes instead of POSTing.
   let editId = $state<string | null>(null)
@@ -67,6 +72,31 @@
     f.title = p.title ?? ''
     f.description = p.description ?? ''
     f.why = p.why ?? ''
+    f.reference_file_url = p.reference_file_url ?? ''
+  }
+
+  async function uploadRef(e: Event) {
+    const input = e.currentTarget as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file) return
+    uploadError = ''
+    uploading = true
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const r = await fetch(`/api/uploads/reference?name=${encodeURIComponent(file.name)}`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!r.ok) throw new Error(await r.text())
+      const data = await r.json() as { url: string }
+      f.reference_file_url = data.url
+      input.value = ''
+    } catch (err) {
+      uploadError = err instanceof Error ? err.message : 'Upload failed'
+    } finally {
+      uploading = false
+    }
   }
 
   async function submit(e: Event) {
@@ -139,6 +169,33 @@
           <input bind:value={f.title} placeholder="What's the idea called?" required style={inputStyle} />
           <textarea bind:value={f.description} placeholder="What are you building?" rows="5" required style={inputStyle}></textarea>
           <textarea bind:value={f.why} placeholder="How will it help people?" rows="4" required style={inputStyle}></textarea>
+
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; font-weight:700; color:#5b4f44;">
+              📎 Reference file <span style="color:#999;">(optional)</span>
+            </div>
+            <div style="position:relative;">
+              <button
+                type="button"
+                disabled={uploading}
+                onclick={(e) => (e.currentTarget.parentElement?.querySelector('input[type=file]') as HTMLInputElement)?.click()}
+                style="width:100%; padding:13px 15px; border:2.5px dashed #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.92rem; background:{f.reference_file_url ? 'rgba(74,150,80,.1)' : '#fbf4e6'}; color:{f.reference_file_url ? '#3d7a40' : '#1c1714'}; cursor:pointer; font-weight:700;"
+              >
+                {uploading ? '⬆ Uploading…' : f.reference_file_url ? '✓ File uploaded' : '⬆ Upload (PDF, Word, Excel, text)'}
+              </button>
+              <input type="file" accept={ACCEPT_DOCS} disabled={uploading} onchange={(e) => uploadRef(e)} style="display:none;" aria-label="Upload reference file" />
+            </div>
+            {#if uploadError}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#b3261e; font-weight:700;">{uploadError}</div>
+            {/if}
+            {#if f.reference_file_url}
+              <button
+                type="button"
+                onclick={() => f.reference_file_url = ''}
+                style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#c2451a; font-weight:700; background:none; border:none; cursor:pointer; padding:0; text-align:left;"
+              >✕ Remove file</button>
+            {/if}
+          </div>
 
           {#if error}
             <div style="font-family:'Space Grotesk',sans-serif; font-size:.85rem; color:#b3261e; font-weight:700;">{error}</div>

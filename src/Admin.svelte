@@ -47,6 +47,9 @@
     'users'
   )
 
+  let roleFilter = $state<'all' | 'user' | 'reviewer' | 'admin'>('all')
+  const ROLE_FILTERS = ['all', 'user', 'reviewer', 'admin'] as const;
+
   type AdminUser = {
     sub: string
     email: string | null
@@ -172,12 +175,12 @@
   })
 
   const shown = $derived(
-    q.trim() === ''
-      ? users
-      : users.filter((u) => {
-          const hay = `${u.name ?? ''} ${u.email ?? ''} ${u.slack_id ?? ''}`.toLowerCase()
-          return hay.includes(q.trim().toLowerCase())
-        }),
+     users.filter((u) => roleFilter === 'all' || u.role === roleFilter)
+      .filter((u) => {
+        if (q.trim() === '') return true;
+        const hay = `${u.name ?? ''} ${u.email ?? ''} ${u.slack_id ?? ''}`.toLowerCase();
+        return hay.includes(q.trim().toLowerCase());
+    }),
   )
 
   const fmt = (s: string) => {
@@ -432,6 +435,15 @@
       <p style="font-size:1rem; color:#5b4f44; margin:12px 0 24px; max-width:560px; line-height:1.6;">
         Everyone who has signed in via Hack Club auth. <strong>{users.length}</strong> total.
       </p>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin:22px 0 24px;">
+        {#each ROLE_FILTERS as f}
+          <button
+            onclick={() => roleFilter = f}
+            style="padding:7px 16px; border:2px solid #1c1714; border-radius:100px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.8rem; text-transform:capitalize; cursor:pointer; box-shadow:2px 2px 0 rgba(28,23,20,.18); background:{roleFilter === f ? 'var(--orange)' : '#fbf4e6'}; color:{roleFilter === f ? '#fff' : '#1c1714'};"
+          >{f}</button>
+        {/each}
+      </div>
 
       <input
         bind:value={q}

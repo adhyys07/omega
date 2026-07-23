@@ -338,7 +338,10 @@
         <a href="/api/auth/login" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 #1c1714;">Sign in with Hack Club</a>
       {/if}
       <a href="#how" class="btn-ghost" style="display:inline-flex; align-items:center; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 rgba(28,23,20,.2);">How it works</a>
-      <a href="/docs" class="btn-ghost" style="display:inline-flex; align-items:center; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:9px 14px 8px 13px/13px 8px 14px 9px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 rgba(28,23,20,.2);">Guides</a> 
+      <a href="/docs" class="btn-ghost" style="display:inline-flex; align-items:center; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:9px 14px 8px 13px/13px 8px 14px 9px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 rgba(28,23,20,.2);">Guides</a>
+      {#if user}
+        <a href="/shop" class="btn-ghost" style="display:inline-flex; align-items:center; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:13px 9px 14px 8px/8px 14px 9px 13px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 rgba(28,23,20,.2);">🛍 Shop</a>
+      {/if} 
     </div>
   </div>
 
