@@ -2,23 +2,18 @@ import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { getSessionUser } from "./auth.ts";
 import {
     createPitch, getPitchById, listPitches, listPitchesBySub, resubmitPitch,
-    setPitchSlackRef, setPitchDuplicateCheck, getSlackIdForSub, type PitchInput, type Row,
+    setPitchDuplicateCheck, getSlackIdForSub, type PitchInput, type Row,
 } from "./db.ts";
-import {
-    notifySlackOfNewReview, postInThread, updateReviewCard, postBuilderControls,
-} from "./slack.ts";
+import { dmUser } from "./slack.ts";
 import { aiEnabled, findDuplicates, shortlist, type DuplicateCheck } from "./ai.ts";
 
 const MAX_LEN = 4000;
 const MAX_PITCH_PER_USER = 3;   // per user, at any one time
 
-/** Flags duplicate ideas for REVIEWERS ONLY — the verdict is stored on the pitch
- *  (absent from the author-facing projection) and commented into the review-channel
- *  thread, which submitters are not members of. Best-effort: a failure here must
- *  never block or fail the pitch itself. */
-async function flagDuplicates(
-    row: Row, channel: string, ts: string, log: FastifyBaseLogger,
-): Promise<void> {
+/** Flags duplicate ideas for REVIEWERS ONLY. The verdict is stored on the pitch
+ *  and shown in the review panel; pitches do not create Slack channel threads.
+ *  Best-effort: a failure here must never block or fail the pitch itself. */
+async function flagDuplicates(row: Row, log: FastifyBaseLogger): Promise<void> {
     if (!aiEnabled()) return;
     try {
         const title = String(row.title ?? '');
@@ -43,15 +38,6 @@ async function flagDuplicates(
 
         const check: DuplicateCheck = { checkedAt: new Date().toISOString(), matches };
         await setPitchDuplicateCheck(String(row.id), check);
-        if (!matches.length) return;
-
-        const lines = matches
-            .map((m) => `• *${m.title}* (${Math.round(m.score * 100)}% match) — ${m.reason}`)
-            .join('\n');
-        await postInThread(
-            channel, ts,
-            `🤖 *Possible duplicate idea* — this looks similar to:\n${lines}\n\n_Automated check, reviewers only. Use your judgment._`,
-        );
     } catch (err) {
         log.error(err, 'duplicate check failed');   // fail open, always
     }
@@ -86,29 +72,20 @@ export default async function pitchRoutes(app: FastifyInstance) {
 
         try {
             const row = await createPitch({ ...(b as PitchInput), user_sub: user.sub });
-            // Post the review card, persist where it landed, then run the duplicate
-            // check so its comment can land in that same (reviewer-only) thread.
-            notifySlackOfNewReview('pitch', user, row)
-                .then(async (ref) => {
-                    if (!ref) return;
-                    await setPitchSlackRef(row.id, ref.channel, ref.ts);
 
-                    // The builder's own controls, ephemeral so only they can see them.
-                    const slackId = await getSlackIdForSub(user.sub);
-                    if (slackId) {
-                        await postBuilderControls(
-                            'pitch',
-                            { ...row, slack_channel: ref.channel, slack_ts: ref.ts },
-                            'pending',
-                            slackId,
-                        );
-                    } else {
-                        req.log.info({ sub: user.sub }, 'no slack_id — builder gets no thread controls');
-                    }
+            // Pitches stay out of shared Slack channels. Confirm receipt privately,
+            // while duplicate detection remains reviewer-only in the web panel.
+            void (async () => {
+                const slackId = await getSlackIdForSub(user.sub);
+                if (slackId) {
+                    await dmUser(
+                        slackId,
+                        `💡 We received your Omega pitch *${row.title}*. We'll DM you when it is approved, rejected, or needs changes.`,
+                    );
+                }
+            })().catch((err: unknown) => req.log.error(err, "pitch receipt DM failed"));
+            void flagDuplicates(row, req.log);
 
-                    await flagDuplicates(row, ref.channel, ref.ts, req.log);
-                })
-                .catch((err: unknown) => req.log.error(err, "slack pitch notify failed"));
             return reply.code(201).send({ ok: true, id: row.id });
         } catch (err) {
             req.log.error(err, "pitch failed");
@@ -140,13 +117,6 @@ export default async function pitchRoutes(app: FastifyInstance) {
         const updated = await resubmitPitch(id, { title: b.title, description: b.description, why: b.why });
         if (!updated) return reply.code(500).send({ error: 'Update failed' });
 
-        // Reuse the original review message: reply in-thread and restore the buttons.
-        if (row.slack_channel && row.slack_ts) {
-            const ch = String(row.slack_channel), ts = String(row.slack_ts);
-            postInThread(ch, ts, `♻️ *${user.name ?? 'The builder'}* reshipped this pitch — ready for another look.`)
-                .then(() => updateReviewCard('pitch', ch, ts, updated, 'pending'))
-                .catch((err: unknown) => req.log.error(err, "pitch reship notify failed"));
-        }
         return reply.code(200).send({ ok: true });
     });
 }

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import type { HcUser } from './auth.ts';
-import { getSlackIdForSub, type Row } from './db.ts';
+import { getAuthUserBySub, type AuthUserIdentity, type Row } from './db.ts';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 const REVIEW_CHANNEL = process.env.SLACK_REVIEW_CHANNEL;
@@ -95,6 +95,13 @@ async function slackProfile(userId: string): Promise<SlackProfile> {
     } catch {
         return { handle: userId, name: userId, avatar_url: null };
     }
+}
+
+/** Resolve a Slack user ID to its human-readable handle for reviewer-facing UI. */
+export async function getSlackUsername(userId: string): Promise<string | null> {
+    if (!SLACK_TOKEN || !userId) return null;
+    const profile = await slackProfile(userId);
+    return profile.handle === userId ? null : profile.handle.replace(/^@/, '');
 }
 
 function stripActorPrefix(text: string): string {
@@ -315,24 +322,33 @@ export function parseActionValue(value: string): { kind: ReviewKind; id: string 
     return { kind: kind === 'pitch' ? 'pitch' : 'project', id: value.slice(i + 1) };
 }
 
-async function submitterMention(row: Row, user?: HcUser): Promise<string> {
-    const fromSession = typeof user?.slack_id === 'string' ? user.slack_id : null;
-    if (fromSession) return `<@${fromSession}>`;
+type SubmitterIdentity = Pick<AuthUserIdentity, 'name' | 'email' | 'slack_id' | 'slack_username'>;
 
+async function submitterIdentity(row: Row, user?: HcUser): Promise<SubmitterIdentity> {
     const sub = typeof row.user_sub === 'string' ? row.user_sub : user?.sub;
-    if (sub) {
-        const slackId = await getSlackIdForSub(sub).catch(() => null);
-        if (slackId) return `<@${slackId}>`;
-    }
+    const auth = sub ? await getAuthUserBySub(sub).catch(() => null) : null;
+    const snapshotName = `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || null;
+    const slackId = auth?.slack_id ?? user?.slack_id ?? null;
+    const profile = slackId ? await slackProfile(slackId) : null;
+    return {
+        name: auth?.name ?? user?.name ?? snapshotName ?? profile?.name ?? null,
+        email: auth?.email ?? user?.email ?? (row.email as string | undefined) ?? null,
+        slack_id: slackId,
+        slack_username: auth?.slack_username ?? profile?.handle ?? null,
+    };
+}
 
-    return '-';
+function submitterMention(identity: SubmitterIdentity): string {
+    return identity.slack_id ? `<@${identity.slack_id}>` : identity.name ?? '—';
 }
 
 
 
 /** The review card. Action buttons render only while the item is actionable. */
-function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, byLine: string, actor?: string): unknown[] {
+function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, identity: SubmitterIdentity, actor?: string): unknown[] {
     const isPitch = kind === 'pitch';
+    const byLine = submitterMention(identity);
+    const slackUsername = identity.slack_username ? `@${identity.slack_username.replace(/^@/, '')}` : '—';
 
     const blocks: unknown[] = [
         {
@@ -344,13 +360,15 @@ function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, byLine
             fields: isPitch
                 ? [
                     { type: 'mrkdwn', text: `*Idea:*\n${row.title ?? '—'}` },
-                    { type: 'mrkdwn', text: `*By:*\n${`${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || '—'}` },
-                    { type: 'mrkdwn', text: `*Submitter ID:*\n${row.user_sub ?? '—'}` },
+                    { type: 'mrkdwn', text: `*Name:*\n${identity.name ?? '—'}` },
+                    { type: 'mrkdwn', text: `*Slack:*\n${slackUsername}` },
+                    { type: 'mrkdwn', text: `*Email:*\n${identity.email ?? '—'}` },
                 ]
                 : [
                     { type: 'mrkdwn', text: `*Project:*\n${row.title ?? '—'}` },
-                    { type: 'mrkdwn', text: `*By:*\n${byLine}` },
-                    { type: 'mrkdwn', text: `*Submitter ID:*\n${row.user_sub ?? '—'}` },
+                    { type: 'mrkdwn', text: `*Name:*\n${identity.name ?? byLine}` },
+                    { type: 'mrkdwn', text: `*Slack:*\n${slackUsername}` },
+                    { type: 'mrkdwn', text: `*Email:*\n${identity.email ?? '—'}` },
                     { type: 'mrkdwn', text: `*Code:*\n${row.code_url || '—'}` },
                     { type: 'mrkdwn', text: `*Playable:*\n${row.playable_url || '—'}` },
                 ],
@@ -411,11 +429,11 @@ export async function notifySlackOfNewReview(
 ): Promise<{ channel: string; ts: string } | null> {
     if (!SLACK_TOKEN || !REVIEW_CHANNEL) return null;
     const label = kind === 'pitch' ? 'pitch' : 'submission';
-    const byLine = await submitterMention(row, user);
+    const identity = await submitterIdentity(row, user);
     const data = await slack<{ channel: string; ts: string }>('chat.postMessage', {
         channel: REVIEW_CHANNEL,
-        text: `New Omega ${label} by ${byLine}`,
-        blocks: reviewBlocks(kind, row, 'pending', byLine),
+        text: `New Omega ${label} by ${submitterMention(identity)}`,
+        blocks: reviewBlocks(kind, row, 'pending', identity),
     });
     return { channel: data.channel, ts: data.ts };
 }
@@ -438,12 +456,12 @@ export async function updateReviewCard(
     actor?: string,
 ): Promise<void> {
     if (!SLACK_TOKEN) return;
-    const byLine = await submitterMention(row);
+    const identity = await submitterIdentity(row);
     await slack('chat.update', {
         channel,
         ts,
         text: `${kind === 'pitch' ? 'Pitch' : 'Submission'} ${state}`,
-        blocks: reviewBlocks(kind, row, state, byLine, actor),
+        blocks: reviewBlocks(kind, row, state, identity, actor),
     });
 }
 

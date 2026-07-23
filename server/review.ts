@@ -9,9 +9,9 @@ import {
 import {
     fetchThreadReplies, postReviewerMessage, dmUser, postInThread, updateReviewCard,
     editLink, pitchEditLink, frontendUrl, postBuilderControls,
-        type ReviewKind, type SubmissionState,
-    type Actor,
-    mention, isReviewer,
+    type ReviewKind, type SubmissionState,
+        type Actor,
+    mention, isReviewer, getSlackUsername,
 } from "./slack.ts";
 import { BADGES, sanitizeBadges, hydrate } from "./badges.ts";
 import { checkGithubRepo, fetchReadme } from "./github-api.ts";
@@ -50,6 +50,26 @@ function extractMentionedSlackIds(text: string): string[] {
 function parseDuplicateCheck(raw: unknown): unknown {
     if (typeof raw !== 'string' || !raw.trim()) return null;
     try { return JSON.parse(raw); } catch { return null; }
+}
+
+/** Existing auth rows often predate slack_username storage. Resolve their handles
+ *  from Slack once per unique ID so both review queues show useful identity now. */
+async function hydrateSlackUsernames(
+    users: Record<string, unknown>[],
+): Promise<Record<string, unknown>[]> {
+    const missingIds = [...new Set(
+        users
+            .filter((u) => !u.slack_username)
+            .map((u) => String(u.slack_id ?? ''))
+            .filter(Boolean),
+    )];
+    const resolved = new Map(await Promise.all(
+        missingIds.map(async (id) => [id, await getSlackUsername(id)] as const),
+    ));
+    return users.map((u) => ({
+        ...u,
+        slack_username: u.slack_username ?? resolved.get(String(u.slack_id ?? '')) ?? null,
+    }));
 }
 
 /** Applies a review decision. The Airtable write is authoritative and awaited;
@@ -97,11 +117,11 @@ async function applyReviewAction(
             const ch = row.slack_channel ? String(row.slack_channel) : '';
             const ts = row.slack_ts ? String(row.slack_ts) : '';
 
-            if (ch && ts) {
-                // Rewrite the card so its buttons match reality — otherwise someone
-                // scrolling Slack could act again on an already-decided item.
-                const fresh = isPitch ? await getPitchById(id) : await getSubmissionById(id);
-                if (fresh) await updateReviewCard(kind, ch, ts, fresh, state, actor.slackId ?? undefined );
+                        if (!isPitch && ch && ts) {
+                // Projects retain their shared review card and thread. Pitch outcomes
+                // are private and are communicated only through the DM below.
+                const fresh = await getSubmissionById(id);
+                if (fresh) await updateReviewCard(kind, ch, ts, fresh, state, actor.slackId ?? undefined);
 
                 const note = action === 'request_changes'
                     ? `✏️ ${mention(actor)} requested changes:\n>${publicNote.replace(/\n/g, '\n>')}`
@@ -115,7 +135,7 @@ async function applyReviewAction(
             // Changes requested is the one state where the builder has something to do,
             // so re-post their controls (reship / withdraw) into the thread. Ephemeral,
             // so nobody else in the channel sees a withdraw button on someone's project.
-            if (action === 'request_changes' && ch && ts) {
+            if (!isPitch && action === 'request_changes' && ch && ts) {
                 await postBuilderControls(
                     kind,
                     { ...row, slack_channel: ch, slack_ts: ts },
@@ -241,84 +261,94 @@ function actionHandler(kind: ReviewKind) {
 export default async function reviewRoutes(app: FastifyInstance) {
     app.get('/api/review/submissions', { preHandler: requireRole('reviewer') }, async (req) => {
         const status = (req.query as { status?: string }).status;
-        const rows = await listSubmissions(status);
+                const [rows, rawUsers] = await Promise.all([listSubmissions(status), listAuthUsers()]);
+        const users = await hydrateSlackUsernames(rawUsers);
+        const bySub = new Map(users.map((u) => [String(u.sub ?? ''), u]));
         rows.sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
-        return rows.map((r) => ({
-            id: r.id,
-            title: r.title ?? null,
-            user_sub: r.user_sub ?? null,
-            status: r.status,
-            code_url: r.code_url ?? null,
-            demo_video_url: r.demo_video_url ?? null,
-            // undefined for rows created before the tick existed — the panel shows
-            // "predates the question" rather than a misleading "no AI".
-            ai_used: r.ai_used === undefined ? null : !!r.ai_used,
-            ai_disclosure: r.ai_disclosure ?? null,
-            description: r.description ?? null,
-            playable_url: r.playable_url ?? null,
-            first_name: r.first_name ?? null,
-            last_name: r.last_name ?? null,
-            hackatime_hours: r.hackatime_hours ?? null,
-            hasThread: !!(r.slack_channel && r.slack_ts),
-            // Current awards, so the panel's chips render pre-toggled.
-            badges: Array.isArray(r.badges) ? r.badges : [],
-            // Payout state — prefills the assessment bar and shows what was paid.
-            tier: r.tier ?? null,
-            approved_hours: r.approved_hours ?? null,
-            payout_tokens: r.payout_tokens ?? null,
-            paid_at: r.paid_at ?? null,
-            created_at: r.created_at ?? null,
-        }));
+        return rows.map((r) => {
+            const auth = bySub.get(String(r.user_sub ?? ''));
+            const snapshotName = `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() || null;
+            return {
+                id: r.id,
+                title: r.title ?? null,
+                submitter_name: auth?.name ?? snapshotName,
+                submitter_email: auth?.email ?? r.email ?? null,
+                submitter_slack_username: auth?.slack_username ?? null,
+                status: r.status,
+                code_url: r.code_url ?? null,
+                demo_video_url: r.demo_video_url ?? null,
+                // undefined for rows created before the tick existed — the panel shows
+                // "predates the question" rather than a misleading "no AI".
+                ai_used: r.ai_used === undefined ? null : !!r.ai_used,
+                ai_disclosure: r.ai_disclosure ?? null,
+                description: r.description ?? null,
+                playable_url: r.playable_url ?? null,
+                first_name: r.first_name ?? null,
+                last_name: r.last_name ?? null,
+                hackatime_hours: r.hackatime_hours ?? null,
+                hasThread: !!(r.slack_channel && r.slack_ts),
+                // Current awards, so the panel's chips render pre-toggled.
+                badges: Array.isArray(r.badges) ? r.badges : [],
+                // Payout state — prefills the assessment bar and shows what was paid.
+                tier: r.tier ?? null,
+                approved_hours: r.approved_hours ?? null,
+                payout_tokens: r.payout_tokens ?? null,
+                paid_at: r.paid_at ?? null,
+                created_at: r.created_at ?? null,
+            };
+        });
     });
 
-    app.get('/api/review/pitches', { preHandler: requireRole('reviewer') }, async (req) => {
-    const { status, q } = req.query as { status?: string; q?: string };
-    const rows = await listPitches(status);
+        app.get('/api/review/pitches', { preHandler: requireRole('reviewer') }, async (req) => {
+            const { status, q } = req.query as { status?: string; q?: string };
+            const [rows, rawUsers] = await Promise.all([listPitches(status), listAuthUsers()]);
+            const users = await hydrateSlackUsernames(rawUsers);
+            const bySub = new Map(users.map((u) => [String(u.sub ?? ''), u]));
 
-    const raw = String(q ?? '').trim().toLowerCase();
-    let filtered = rows;
+        const raw = String(q ?? '').trim().toLowerCase();
+        let filtered = rows;
 
-    if (raw) {
-        const needles = [...new Set([raw, raw.replace(/^@/, '')].filter(Boolean))];
-        const users = await listAuthUsers();
-        const bySub = new Map(users.map((u) => [String(u.sub ?? ''), u]));
+        if (raw) {
+            const needles = [...new Set([raw, raw.replace(/^@/, '')].filter(Boolean))];
+            const hit = (v: unknown): boolean => {
+                const s = String(v ?? '').toLowerCase();
+                return needles.some((n) => s.includes(n));
+            };
 
-        const hit = (v: unknown): boolean => {
-            const s = String(v ?? '').toLowerCase();
-            return needles.some((n) => s.includes(n));
-        };
+            filtered = rows.filter((r) => {
+                const auth = bySub.get(String(r.user_sub ?? ''));
+                return [
+                    r.title,
+                    r.first_name,
+                    r.last_name,
+                    r.email,
+                    auth?.name,
+                    auth?.email,
+                    auth?.slack_username,
+                ].some(hit);
+            });
+        }
 
-        filtered = rows.filter((r) => {
+        return filtered.map((r) => {
             const auth = bySub.get(String(r.user_sub ?? ''));
-            return [
-                r.title,
-                r.first_name,
-                r.last_name,
-                r.email,
-                r.user_sub,
-                auth?.name,
-                auth?.email,
-                auth?.slack_id,
-                auth?.slack_username,
-                auth?.username,
-            ].some(hit);
+            const snapshotName = `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() || null;
+            return {
+                id: r.id,
+                title: r.title ?? null,
+                submitter_name: auth?.name ?? snapshotName,
+                submitter_email: auth?.email ?? r.email ?? null,
+                submitter_slack_username: auth?.slack_username ?? null,
+                status: r.status ?? 'pending',
+                description: r.description ?? null,
+                why: r.why ?? null,
+                first_name: r.first_name ?? null,
+                last_name: r.last_name ?? null,
+                hasThread: !!(r.slack_channel && r.slack_ts),
+                duplicate_check: parseDuplicateCheck(r.duplicate_check),
+                created_at: r.created_at ?? null,
+            };
         });
-    }
-
-    return filtered.map((r) => ({
-        id: r.id,
-        title: r.title ?? null,
-        user_sub: r.user_sub ?? null,
-        status: r.status ?? 'pending',
-        description: r.description ?? null,
-        why: r.why ?? null,
-        first_name: r.first_name ?? null,
-        last_name: r.last_name ?? null,
-        hasThread: !!(r.slack_channel && r.slack_ts),
-        duplicate_check: parseDuplicateCheck(r.duplicate_check),
-        created_at: r.created_at ?? null,
-    }));
-});
+    });
 
     /** The pitch a project came from — so a reviewer can ask "did they build what
      *  they pitched?" without going and hunting for it. Reviewer-gated, so unlike the
@@ -418,47 +448,27 @@ export default async function reviewRoutes(app: FastifyInstance) {
 
 
 
-    app.post('/api/review/pitches/:id/message', { preHandler: requireRole('reviewer') }, async (req, reply) => {
+        app.post('/api/review/pitches/:id/message', { preHandler: requireRole('reviewer') }, async (req, reply) => {
         const user = getSessionUser(req)!;
         const { id } = req.params as { id: string };
         const text = String((req.body as { text?: string }).text ?? '').trim();
-        const alsoDm = (req.body as { dmSubmitter?: boolean })?.dmSubmitter === true;
 
         if (!text) return reply.status(400).send({ error: 'Message text is required' });
         if (text.length > 4000) return reply.status(400).send({ error: 'Message text is too long' });
 
         const row = await getPitchById(id);
         if (!row) return reply.status(404).send({ error: 'Pitch not found' });
-        if (!row.slack_channel || !row.slack_ts) {
-            return reply.status(409).send({ error: 'Pitch has no Slack thread' });
-        }
-
-        if (SLACK_SPECIAL_MENTION_RE.test(text)) {
-            return reply.status(400).send({ error: 'Mass mentions are not allowed in review threads' });
-        }
-        const mentionedIds = extractMentionedSlackIds(text);
-        if (mentionedIds.length) {
-            const submitterSlackId = await getSlackIdForSub(String(row.user_sub));
-            const bad = mentionedIds.find((sid) => !isReviewer(sid) && sid !== submitterSlackId);
-            if (bad) {
-                return reply.status(403).send({ error: 'You can only mention reviewers/admins or this submitter' });
-            }
-        }
 
         try {
-            await postReviewerMessage(
-                String(row.slack_channel), String(row.slack_ts),
-                actorOf(user), text,
+            const slackId = await getSlackIdForSub(String(row.user_sub));
+            if (!slackId) return reply.code(409).send({ error: 'Submitter has no linked Slack account' });
+            await dmUser(
+                slackId,
+                `💬 ${mention(actorOf(user))} on your pitch *${row.title}*:\n\n>${text.replace(/\n/g, '\n>')}`,
             );
-            if (alsoDm) {
-                const slackId = await getSlackIdForSub(String(row.user_sub));
-                if (slackId) {
-                    await dmUser(slackId, `💬 ${mention(actorOf(user))} on your pitch *${row.title}*:\n\n>${text.replace(/\n/g, '\n>')}`);
-                }
-            }
             return { ok: true };
         } catch (err) {
-            req.log.error(err, 'post reviewer pitch message failed');
+            req.log.error(err, 'pitch DM failed');
             return reply.code(502).send({ error: 'Slack rejected the message' });
         }
     });

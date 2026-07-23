@@ -401,6 +401,7 @@ export async function upsertAuthUser(u: HcUser): Promise<void> {
         verification_status: u.verification_status ?? null,
         ysws_eligible: u.ysws_eligible ?? false,
         slack_id: u.slack_id ?? null,
+        slack_username: u.slack_username ?? u.preferred_username ?? existing?.slack_username ?? null,
         phone_number: u.phone_number ?? null,
         address: address.address,
         birthdate: u.birthdate ?? null,
@@ -464,14 +465,22 @@ export async function getAuthUserMeta(sub: string): Promise<{ role: string; bann
     return { role: (row?.role as string) ?? "user", banned: bool(row?.banned), tokens: Number(row?.tokens ?? 0) };
 }
 
-export async function getAuthUserBySub(
-    sub: string,
-): Promise<{ email: string | null; slack_id: string | null; role: string } | null> {
+export type AuthUserIdentity = {
+    name: string | null;
+    email: string | null;
+    slack_id: string | null;
+    slack_username: string | null;
+    role: string;
+};
+
+export async function getAuthUserBySub(sub: string): Promise<AuthUserIdentity | null> {
     const row = await findAuthUser(sub);
     if (!row) return null;
     return {
+        name: (row.name as string) ?? null,
         email: (row.email as string) ?? null,
         slack_id: (row.slack_id as string) ?? null,
+        slack_username: (row.slack_username as string) ?? null,
         role: (row.role as string) ?? "user",
     };
 }

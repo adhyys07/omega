@@ -34,6 +34,8 @@ export type HcUser = {
     verification_status?: string;
     ysws_eligible?: boolean;
     slack_id?: string;
+    slack_username?: string;
+    preferred_username?: string;
     phone_number?: string;
     phone_number_verified?: boolean;
     birthdate?: string;

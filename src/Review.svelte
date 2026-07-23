@@ -4,7 +4,9 @@
   type Sub = {
     id: string
     title: string | null
-    user_sub: string | null
+    submitter_name: string | null
+    submitter_email: string | null
+    submitter_slack_username: string | null
     status: string
     first_name: string | null
     last_name: string | null
@@ -423,13 +425,13 @@
 
   // Slack ts is "epochSeconds.micros".
   const fmtTs = (ts: string) => new Date(Number(ts) * 1000).toLocaleString()
-  const who = (s: Sub) => `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim() || '—'
+  const who = (s: Sub) => s.submitter_name || `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim() || '—'
 
   const filteredSubs = $derived.by(() => {
     const query = queueSearch.trim().toLowerCase()
     return subs.filter((s) => {
       const matchesStatus = queueStatus === 'all' || s.status === queueStatus
-      const haystack = `${s.title ?? ''} ${s.first_name ?? ''} ${s.last_name ?? ''} ${s.user_sub ?? ''}`.toLowerCase()
+      const haystack = `${s.title ?? ''} ${s.submitter_name ?? ''} ${s.submitter_email ?? ''} ${s.submitter_slack_username ?? ''}`.toLowerCase()
       return matchesStatus && (!query || haystack.includes(query))
     })
   })
@@ -471,7 +473,7 @@
     <input
       bind:value={pitchSearch}
       onkeydown={(e) => e.key === 'Enter' && load()}
-      placeholder="Search by name, email, Slack ID, or Slack username"
+      placeholder="Search by name, email, or Slack username"
       style="min-width:280px; flex:1; padding:8px 12px; border:2px solid #1c1714; border-radius:9px; font-family:'Space Grotesk',sans-serif; background:#fbf4e6;"
     />
     <button
@@ -527,8 +529,11 @@
                 {STATUS_LABEL[s.status] ?? s.status}
               </span>
               <span style="font-size:.72rem; color:#5b4f44;">{who(s)}</span>
-              {#if s.user_sub}
-                <span style="font-size:.7rem; color:#5b4f44; font-family:monospace;">· id: {s.user_sub}</span>
+              {#if s.submitter_slack_username}
+                <span style="font-size:.7rem; color:#5b4f44;">· @{s.submitter_slack_username.replace(/^@/, '')}</span>
+              {/if}
+              {#if s.submitter_email}
+                <span style="font-size:.7rem; color:#5b4f44;">· {s.submitter_email}</span>
               {/if}
               {#if s.created_at}
                 <span title={fmtDate(s.created_at)} style="font-size:.72rem; color:#5b4f44;">· {fmtDay(s.created_at)}</span>
@@ -536,7 +541,7 @@
               {#if s.duplicate_check?.matches?.length}
                 <span title="Possible duplicate idea — open to see the matches" style="font-size:.72rem; color:#b07410; font-weight:700;">🤖 dupe?</span>
               {/if}
-              {#if !s.hasThread}
+              {#if kind === 'projects' && !s.hasThread}
                 <span title="No Slack thread — predates the integration, or the card failed to post" style="font-size:.72rem; color:#b07410;">⚠ no thread</span>
               {/if}
             </div>
@@ -574,7 +579,8 @@
             {/if}
             <div class="review-meta">
               {who(selected)}
-              {#if selected.user_sub} · <span style="font-family:monospace;">id: {selected.user_sub}</span>{/if}
+              {#if selected.submitter_slack_username} · @{selected.submitter_slack_username.replace(/^@/, '')}{/if}
+              {#if selected.submitter_email} · {selected.submitter_email}{/if}
               {#if selected.created_at} · <span title="Submitted">🕘 {fmtDate(selected.created_at)}</span>{/if}
               {#if selected.hackatime_hours} · {selected.hackatime_hours}h{/if}
             </div>
@@ -964,7 +970,27 @@
           </div>
         {/if}
 
-        {#if !selected.hasThread}
+        {#if kind === 'pitches'}
+          <div style="padding:16px; border-top:2px dashed rgba(28,23,20,.28); display:flex; flex-direction:column; gap:10px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44;">
+              Pitch communication is private. This message will be sent directly to the submitter on Slack.
+            </div>
+            <textarea
+              bind:value={draft}
+              placeholder="Message the pitch submitter privately."
+              rows="3"
+              style="padding:11px 13px; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-family:'Space Grotesk',sans-serif; font-size:.88rem; background:#fbf4e6; color:#1c1714; outline:none; box-shadow:3px 3px 0 #1c1714; resize:vertical;"
+            ></textarea>
+            {#if err}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#b3261e; font-weight:700;">{err}</div>
+            {/if}
+            <button
+              onclick={send}
+              disabled={sending || !draft.trim()}
+              style="align-self:flex-start; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:11px 8px 12px 9px/9px 12px 8px 11px; padding:10px 20px; font-family:'Syne',sans-serif; font-weight:800; font-size:.85rem; cursor:{sending || !draft.trim() ? 'not-allowed' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{sending || !draft.trim() ? '.55' : '1'};"
+            >{sending ? 'Sending.' : 'Send private DM'}</button>
+          </div>
+        {:else if !selected.hasThread}
           <p style="padding:20px; color:#5b4f44; font-family:'Space Grotesk',sans-serif; font-size:.85rem;">
             No Slack thread for this submission — it predates the Slack integration, or the card failed to post.
           </p>
