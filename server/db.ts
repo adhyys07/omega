@@ -393,7 +393,7 @@ function normalizeAddress(address: HcUser["address"] | undefined) {
 export async function upsertAuthUser(u: HcUser): Promise<void> {
     const existing = await findAuthUser(u.sub);
 
-    const address = normalizeAddress(u.address);
+        const address = normalizeAddress(u.address);
 
     const fields: Record<string, unknown> = {
         email: u.email ?? null,
@@ -401,7 +401,6 @@ export async function upsertAuthUser(u: HcUser): Promise<void> {
         verification_status: u.verification_status ?? null,
         ysws_eligible: u.ysws_eligible ?? false,
         slack_id: u.slack_id ?? null,
-        slack_username: u.slack_username ?? u.preferred_username ?? existing?.slack_username ?? null,
         phone_number: u.phone_number ?? null,
         address: address.address,
         birthdate: u.birthdate ?? null,

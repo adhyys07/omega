@@ -102,7 +102,7 @@ export default async function authRoutes(app: FastifyInstance) {
             const tokens = (await tokenRes.json()) as { access_token: string; scope?: string; id_token?: string }
             req.log.info({ grantedScope: tokens.scope }, 'token granted scopes') // DEBUG
 
-            const userRes = await fetch(USERINFO_URL, {
+                        const userRes = await fetch(USERINFO_URL, {
                 headers: { 'Authorization': `Bearer ${tokens.access_token}` },
             })
             if (!userRes.ok) {
@@ -112,12 +112,9 @@ export default async function authRoutes(app: FastifyInstance) {
             const user = (await userRes.json()) as HcUser;
             req.log.info({ userinfoKeys: Object.keys(user) }, 'userinfo response') // DEBUG (keys only — no PII values in logs)
 
-            // Persist the user so the admin panel can list everyone who has signed in.
-            try {
-                await upsertAuthUser(user)
-            } catch (err) {
-                req.log.error(err, 'failed to persist auth user')
-            }
+            // A session without its auth_users row breaks identity, roles, pitches,
+            // and payouts. Treat persistence as part of login instead of hiding errors.
+            await upsertAuthUser(user)
 
             reply.setCookie(SESSION_COOKIE, JSON.stringify(user), {
                 path: '/',
