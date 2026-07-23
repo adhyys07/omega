@@ -65,6 +65,14 @@ export default async function pitchRoutes(app: FastifyInstance) {
             }
         }
 
+        if (b.reference_file_url) {
+        try {
+            new URL(b.reference_file_url);
+        } catch {
+            return reply.code(400).send({ error: 'Invalid reference_file_url' });
+        }
+        }
+
         const myPitches = await listPitchesBySub(user.sub);
         if (myPitches.length >= MAX_PITCH_PER_USER) {
             return reply.code(409).send({ error: `You can only have ${MAX_PITCH_PER_USER} pitches at a time` });
@@ -114,7 +122,15 @@ export default async function pitchRoutes(app: FastifyInstance) {
             }
         }
 
-        const updated = await resubmitPitch(id, { title: b.title, description: b.description, why: b.why });
+        if (b.reference_file_url) {
+            try {
+                new URL(b.reference_file_url);
+            } catch {
+                return reply.code(400).send({ error: 'Invalid reference_file_url' });
+            }
+        }
+
+        const updated = await resubmitPitch(id, { title: b.title, description: b.description, why: b.why, reference_file_url: b.reference_file_url });
         if (!updated) return reply.code(500).send({ error: 'Update failed' });
 
         return reply.code(200).send({ ok: true });

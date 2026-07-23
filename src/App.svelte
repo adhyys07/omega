@@ -100,6 +100,8 @@
     return () => removeEventListener('popstate', onPop)
   })
 
+  let selectedBadge = $state<string | null>(null)
+
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -174,12 +176,11 @@
   ]
 
   const badges = [
-    { char: '▲', label: 'Android Builder', bg: 'rgba(74,150,80,.16)', color: '#3d7a40', r: '10px 7px 11px 6px/6px 11px 7px 10px', rot: '-1.2deg' },
-    { char: '◉', label: 'iOS Shipper', bg: 'rgba(255,107,53,.16)', color: '#c2451a', r: '7px 10px 6px 11px/11px 6px 10px 7px', rot: '.9deg' },
-    { char: '✦', label: 'Gemini Integration', bg: 'rgba(47,109,176,.16)', color: '#2f6db0', r: '10px 7px 11px 6px/6px 11px 7px 10px', rot: '-.6deg' },
-    { char: '▣', label: 'Cider Crossover', bg: 'rgba(255,179,71,.2)', color: '#b07410', r: '7px 10px 6px 11px/11px 6px 10px 7px', rot: '1.1deg' },
-    { char: '◆', label: 'Dual Platform', bg: 'rgba(255,107,53,.16)', color: '#c2451a', r: '10px 7px 11px 6px/6px 11px 7px 10px', rot: '-1deg' },
-    { char: '⚡', label: 'Elite Tier', bg: 'rgba(255,179,71,.2)', color: '#b07410', r: '7px 10px 6px 11px/11px 6px 10px 7px', rot: '.7deg' },
+    { char: '▲', label: 'Android Builder', desc: 'Built and shipped a fully functional Android app', bg: 'rgba(74,150,80,.16)', color: '#3d7a40' },
+    { char: '◉', label: 'iOS Shipper', desc: 'Built and shipped a fully functional iOS app', bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
+    { char: '✦', label: 'Gemini Integration', desc: 'Integrated Google Gemini AI into your project', bg: 'rgba(47,109,176,.16)', color: '#2f6db0' },
+    { char: '▣', label: 'Cider Crossover', desc: 'Connected to Apple\'s Cider ecosystem', bg: 'rgba(255,179,71,.2)', color: '#b07410' },
+    { char: '◆', label: 'Dual Platform', desc: 'Shipped on both Android and iOS', bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
   ]
 
   const tiers = [
@@ -199,10 +200,10 @@
   // The AI stance, spelled out. Kept as data so the copy lives next to the rules
   // rather than buried in markup.
   const aiPolicy = [
-    { ok: true,  lead: 'Declare it when you submit.', rest: "There's a field for it. Say what you used AI for, specifically. An honest disclosure has never cost anyone an approval." },
-    { ok: true,  lead: 'Be able to explain your code.', rest: 'A reviewer may ask how something works. "The AI wrote it" isn\'t an answer.' },
-    { ok: true,  lead: 'Log honest hours.', rest: "Hackatime tracks real time. If AI generated a feature in five minutes, don't bill five hours for it." },
-    { ok: false, lead: 'Hiding it is the problem.', rest: "Undeclared AI, padded hours, or an app you can't explain gets rejected — and repeat offences go to the fraud team." },
+    { ok: true,  lead: 'Declare it when you submit.', rest: "Be specific. \"Used Claude to debug X and generate Y\" is good, \"used AI a bit\" is not." },
+    { ok: true,  lead: 'Be able to explain your code.', rest: 'Reviewers will ask how it works. "The AI wrote it" isn\'t an answer.' },
+    { ok: true,  lead: 'Log honest hours.', rest: "If AI generated it in 5 minutes, don't log 5 hours." },
+    { ok: false, lead: 'Hiding it is the problem.', rest: "Undeclared AI or code you can't explain = rejected. Repeat offences = banned." },
   ]
 
   const faqs = [
@@ -210,7 +211,6 @@
     { q: 'How does Ω tokens work?', a: 'Approved hours × tier multiplier = Ω tokens. Roughly $4–6 per hour. Spend it on anything in the shop.' },
     { q: 'Can I use AI to build my project?', a: "Yes. Use whatever tools help you ship — but you have to declare what you used them for when you submit. The rule is simple: you must be able to explain every line of your own code. A reviewer may ask, and \"the AI wrote it\" isn't an answer." },
     { q: 'What counts as a good AI disclosure?', a: "Be specific and be honest. \"Used Claude to debug my Room database migrations and generate the settings screen boilerplate\" is a great disclosure. \"Used AI a bit\" is not. Nobody has ever been rejected for an honest disclosure — people get rejected for hiding one." },
-    { q: 'Will using AI hurt my review?', a: "No. Shipping something you don't understand will. So will Hackatime hours that don't match real work — if you generated a feature in 5 minutes, don't log 5 hours for it." },
     { q: 'Can I also submit to other YSWS?', a: 'No. No double dipping with any other YSWS program whatsoever.' },
     { q: "Who's eligible?", a: 'High schoolers or younger. 100% free — funded by Hack Club donors.' },
     { q: 'How much does it cost?', a: 'Nothing. The entire program is free, funded by donations to The Hack Foundation.' },
@@ -405,13 +405,75 @@
 
       <div style="margin-top:42px;">
         <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:8px;">✦ Achievement badges</div>
-        <p style="font-size:.9rem; color:#5b4f44; line-height:1.65; max-width:560px; margin-bottom:18px;">Hit specific milestones to unlock badges — each one can unlock bonus shop items. One project can earn multiple.</p>
-        <div style="display:flex; flex-wrap:wrap; gap:10px;">
-          {#each badges as b}
-            <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:{b.r}; font-size:.8rem; font-weight:700; background:{b.bg}; color:{b.color}; box-shadow:2px 2px 0 rgba(28,23,20,.18); transform:rotate({b.rot});">{b.char} {b.label}</span>
+        <p style="font-size:.9rem; color:#5b4f44; line-height:1.65; max-width:560px; margin-bottom:24px;">Unlock badges by hitting specific milestones. Click any badge to learn what it takes.</p>
+
+        <div style="display:flex; flex-wrap:nowrap; gap:20px; justify-content:center; overflow-x:auto; padding:8px 0;">
+          {#each badges as b (b.label)}
+            <button
+              type="button"
+              onclick={() => selectedBadge = b.label}
+              style="all:unset; cursor:pointer;"
+            >
+              <div style="
+                padding:28px 24px;
+                border:2.5px solid #1c1714;
+                border-radius:16px;
+                background:{b.bg};
+                color:{b.color};
+                font-size:.9rem;
+                font-weight:700;
+                text-align:center;
+                box-shadow:3px 3px 0 rgba(28,23,20,.18);
+                transition:all .2s ease;
+                display:flex;
+                flex-direction:column;
+                align-items:center;
+                justify-content:center;
+                gap:8px;
+                width:140px;
+                height:140px;
+              ">
+                <div style="font-size:3rem;">{b.char}</div>
+                <div style="font-size:.8rem; line-height:1.3;">{b.label}</div>
+              </div>
+            </button>
           {/each}
         </div>
       </div>
+
+      {#if selectedBadge}
+        {@const badge = badges.find(b => b.label === selectedBadge)}
+        {#if badge}
+          <div
+            role="presentation"
+            style="position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:20px; z-index:1000; animation:fadeIn .2s ease;"
+            onclick={() => selectedBadge = null}
+            onkeydown={(e) => e.key === 'Escape' && (selectedBadge = null)}
+          >
+            <div
+              role="dialog"
+              tabindex="0"
+              aria-labelledby="badge-title"
+              style="background:#fff; padding:32px; border-radius:20px; max-width:400px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.3); animation:popupSlideIn .3s ease;"
+              onclick={(e) => e.stopPropagation()}
+              onkeydown={(e) => e.key === 'Escape' && (selectedBadge = null)}
+            >
+              <div style="text-align:center; margin-bottom:24px;">
+                <div style="font-size:3.5rem; margin-bottom:12px;">{badge.char}</div>
+                <h3 style="font-size:1.3rem; font-weight:700; color:#1c1714; margin:0; font-family:'Syne',sans-serif;">{badge.label}</h3>
+              </div>
+              <p style="font-size:.95rem; color:#5b4f44; line-height:1.7; margin:0 0 24px; text-align:center;">{badge.desc}</p>
+              <button
+                type="button"
+                onclick={() => selectedBadge = null}
+                style="all:unset; display:block; width:100%; padding:10px; background:#1c1714; color:#fff; text-align:center; border-radius:8px; cursor:pointer; font-weight:600; font-size:.9rem;"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        {/if}
+      {/if}
     </div>
   </div>
 
@@ -506,8 +568,8 @@
           margin-top:18px;
         ">
           <p style="margin:0 0 16px; font-size:.95rem; color:#5b4f44; line-height:1.68;">
-            We're not going to pretend it's 2019. Copilot, Claude, Cursor — use them. What we care about
-            is that <strong style="color:#1c1714;">the project is actually yours</strong>: your idea, your
+            Use AI freely : up to 1/3 of your coding time can be AI-assisted. What matters is that
+            <strong style="color:#1c1714;">the project is actually yours</strong>: your idea, your
             architecture, your understanding.
           </p>
 
@@ -534,7 +596,7 @@
             </div>
           {/each}
           <div style="padding:19px 0;">
-            <div style="font-family:'Syne',sans-serif; font-size:.98rem; font-weight:700; margin-bottom:7px;">I need help!</div>
+            <div style="font-family:'Syne',sans-serif; font-size:.98rem; font-weight:700; margin-bottom:7px;">I still need help!</div>
             <div style="font-size:.88rem; color:#5b4f44; line-height:1.68;">Jump into <a href="https://hackclub.com/slack" target="_blank" rel="noopener" style="color:var(--orange); font-weight:600; text-decoration:underline; text-decoration-style:wavy; text-underline-offset:3px;">#omega on Hack Club Slack</a> — we're always there.</div>
           </div>
         </div>
@@ -663,6 +725,37 @@
     }
     to {
       transform: translateX(-50%);
+    }
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes popupSlideIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95) translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
     }
   }
 

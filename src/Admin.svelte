@@ -313,6 +313,20 @@
     if (!res.ok) u.banned = prev // revert on failure
   }
 
+  async function resyncUser(u: AdminUser) {
+    const res = await fetch(`/api/admin/users/${encodeURIComponent(u.sub)}/resync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    if (res.ok) {
+      const data = await res.json()
+      alert(`✓ User "${u.name ?? u.email}" exists in database.`)
+    } else {
+      const data = await res.json()
+      alert(`⚠ ${data.error ?? 'Resync failed'}\n\n${data.instruction ?? 'User must log in again to be synced.'}`)
+    }
+  }
+
   async function addItem() {
     formError = ''
     if (!form.slug || !form.name || !form.description || form.cost == null || !form.category) {
@@ -510,7 +524,12 @@
                     >± Adjust</button>
                   </td>
                   <td style="padding:11px 14px; color:#5b4f44; white-space:nowrap;">{fmt(u.last_login)}</td>
-                  <td style="padding:11px 14px;">
+                  <td style="padding:11px 14px; display:flex; gap:6px; flex-wrap:wrap;">
+                    <button
+                      onclick={() => resyncUser(u)}
+                      title="Check if user exists in database and resync if needed"
+                      style="cursor:pointer; border:2px solid #2f6db0; border-radius:6px; padding:4px 10px; font-weight:700; font-size:.75rem; background:rgba(47,109,176,.14); color:#2f6db0;"
+                    >Resync</button>
                     {#if u.role !== 'admin'}
                       <button
                         onclick={() => toggleBan(u)}

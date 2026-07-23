@@ -158,6 +158,19 @@ export default async function authRoutes(app: FastifyInstance) {
         reply.clearCookie(SESSION_COOKIE, { path: '/' });
         return  { ok : true };
     })
+
+    app.post('/api/auth/resync', async (req, reply) => {
+        const user = getSessionUser(req);
+        if (!user) return reply.code(401).send({ error: 'Not authenticated' });
+
+        try {
+            await upsertAuthUser(user);
+            return { ok: true, message: 'User synced to database' };
+        } catch (err) {
+            req.log.error(err, 'resync failed');
+            return reply.code(500).send({ error: 'Resync failed' });
+        }
+    })
 }
 
 // --- Shared session / admin helpers (used by the admin routes) ---

@@ -16,10 +16,20 @@ const VIDEO_EXT: Record<string, string> = {
     "video/quicktime": ".mov",
 };
 
-const EXT: Record<string, string> = { ...IMAGE_EXT, ...VIDEO_EXT };
+const DOC_EXT: Record<string, string> = {
+    "application/pdf": ".pdf",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "text/plain": ".txt",
+};
+
+const EXT: Record<string, string> = { ...IMAGE_EXT, ...VIDEO_EXT, ...DOC_EXT };
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
 const MAX_VIDEO_BYTES = 64 * 1024 * 1024; // 64MB
+const MAX_DOC_BYTES = 16 * 1024 * 1024; // 16MB for documents
 
 export default async function uploadRoutes(app: FastifyInstance) {
     app.addContentTypeParser(/^(image|video)\//, { parseAs: "buffer" }, (_req, body, done) => done(null, body));
@@ -45,6 +55,49 @@ export default async function uploadRoutes(app: FastifyInstance) {
         const limit = VIDEO_EXT[contentType] ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
         if (bytes.length > limit) {
             return reply.code(413).send({ error: `File is too large (max ${Math.round(limit / 1024 / 1024)}MB)` });
+        }
+
+        const form = new FormData();
+        const name = safeName((req.query as { name?: string }).name ?? "", contentType);
+        form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), name);
+
+        const res = await fetch(CDN_UPLOAD_URL, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${key}` },
+            body: form,
+        });
+
+        if (!res.ok) {
+            const err = (await res.json().catch(() => ({}))) as { error?: string };
+            req.log.error({ status: res.status, err }, "CDN upload failed");
+            return reply.code(502).send({ error: "Upload failed" });
+        }
+
+        const data = (await res.json()) as { url: string };
+        return { url: data.url };
+    });
+
+    app.addContentTypeParser(/^(application|text)\//, { parseAs: "buffer" }, (_req, body, done) => done(null, body));
+
+    app.post('/api/uploads/reference', { bodyLimit: MAX_DOC_BYTES }, async (req, reply) => {
+        const user = getSessionUser(req);
+        if (!user) return reply.status(401).send({ error: 'Unauthorized' });
+
+        const key = process.env.CDN_API_KEY;
+        if (!key) return reply.status(500).send({ error: 'Upload service not configured' });
+
+        const contentType = String(req.headers["content-type"] ?? "");
+        if (!DOC_EXT[contentType]) {
+            return reply.code(415).send({ error: "Only PDF, Word, Excel, and text files are allowed" });
+        }
+
+        const bytes = req.body as Buffer;
+        if (!bytes || bytes.length === 0) {
+            return reply.code(400).send({ error: "No file uploaded" });
+        }
+
+        if (bytes.length > MAX_DOC_BYTES) {
+            return reply.code(413).send({ error: "File is too large (max 16MB)" });
         }
 
         const form = new FormData();

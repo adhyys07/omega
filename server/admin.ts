@@ -13,6 +13,7 @@ import {
     setAuthUserRole,
         setAuthUserBanned,
     adjustUserTokens,
+    upsertAuthUser,
 } from "./db.ts";
 
 export default async function adminRoutes(app: FastifyInstance) {
@@ -181,6 +182,25 @@ export default async function adminRoutes(app: FastifyInstance) {
     // Everyone who has signed in via Hack Club auth.
     app.get('/api/admin/users', { preHandler: requireAdmin }, async () => {
         return listAuthUsers();
+    });
+
+    // Admin: manually resync a user by their sub. User must log in again with fresh OAuth data.
+    app.post('/api/admin/users/:sub/resync', { preHandler: requireAdmin }, async (req, reply) => {
+        const { sub } = req.params as { sub: string };
+
+        const user = await getAuthUserBySub(sub);
+        if (!user) {
+            return reply.code(404).send({
+                error: 'User not found in database',
+                instruction: 'User must log in via OAuth to be synced. Once logged in, they will be added to the database.',
+            });
+        }
+
+        return {
+            ok: true,
+            status: 'User exists in database',
+            user: { name: user.name, email: user.email },
+        };
     });
 
 }

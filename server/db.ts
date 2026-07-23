@@ -785,6 +785,7 @@ export type PitchInput = {
     description: string;
     /** How the idea helps people — the second half of the landing-page prompt. */
     why: string;
+    reference_file_url?: string | null;
     /** Set only by the admin dev stage-seeder. Marks a row wipeSeeded() may delete. */
     seeded?: boolean;
 };
@@ -827,6 +828,7 @@ export async function createPitch(input: PitchInput): Promise<Row> {
     return createRecord(TABLE.pitches, {
         user_sub: input.user_sub,
         title: input.title,
+        reference_file_url: input.reference_file_url ?? null,
         description: input.description,
         why: input.why,
         first_name: first_name ?? "",
@@ -896,7 +898,7 @@ export async function requestPitchChanges(id: string, reviewer: string, feedback
 
 export async function resubmitPitch(
     id: string,
-    patch: Partial<Pick<PitchInput, "title" | "description" | "why">>,
+    patch: Partial<Pick<PitchInput, "title" | "description" | "why" | "reference_file_url">>,
 ): Promise<Row | null> {
     return updateRecord(TABLE.pitches, id, {
         ...patch,
