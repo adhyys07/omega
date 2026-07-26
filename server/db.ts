@@ -47,6 +47,10 @@ export type ShopOrderResult =
     | { ok: true; order: Row; tokens: number }
     | { ok: false; error: string };
 
+export type BadgePayoutResult =
+    | { ok: true; newlyPaid: string[]; tokens: number }
+    | { ok: false; error: string };
+
 type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
 export type Row = { id: string } & Record<string, unknown>;
 
@@ -200,6 +204,62 @@ export async function payoutSubmission(
     // Return the PAYOUT, not res.tokens — that's the user's new balance, a different
     // number the reviewer never asked about.
     return { ok: true, tokens, alreadyPaid: false };
+}
+
+/** badges_paid is a JSON array in a long-text field. A corrupt value must NOT
+ *  read as "nothing paid yet" — that would re-pay every badge on the next save,
+ *  so this throws instead and the caller logs it. */
+function parsePaidBadges(v: unknown): string[] {
+    if (typeof v !== "string" || !v.trim()) return [];
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(v);
+    } catch {
+        throw new Error("badges_paid is corrupt — refusing to pay, would double-credit");
+    }
+    return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === "string") : [];
+}
+
+/** Credits tokens for badges never paid on this submission. Awarding REPLACES the
+ *  badge set, so re-saving the same chips must pay nothing. Removing a badge does
+ *  not claw back, and re-adding it later pays nothing either — badges_paid only
+ *  ever grows. */
+export async function payBadgeTokens(
+    submissionId: string,
+    awarded: string[],
+    perBadge: number,
+    reviewerSub: string | null,
+): Promise<BadgePayoutResult> {
+    const s = await getSubmissionById(submissionId);
+    if (!s) return { ok: false, error: "Submission not found" };
+
+    const sub = String(s.user_sub ?? "");
+    if (!sub) return { ok: false, error: "Submission has no user_sub" };
+
+    const alreadyPaid = parsePaidBadges(s.badges_paid);
+    const newlyPaid = awarded.filter((slug) => !alreadyPaid.includes(slug));
+    if (!newlyPaid.length) return { ok: true, newlyPaid: [], tokens: 0 };
+
+    const tokens = newlyPaid.length * perBadge;
+
+    // CLAIM before CREDIT, same as payoutSubmission: a crash between the two
+    // under-pays (visible, fixable by hand) rather than paying twice.
+    await updateRecord(TABLE.projectSubmissions, submissionId, {
+        badges_paid: JSON.stringify([...alreadyPaid, ...newlyPaid]),
+        badges_paid_at: now(),
+    });
+
+    const res = await adjustUserTokens(
+        sub, tokens,
+        `Badge award — ${newlyPaid.join(", ")} (${s.title ?? "project"})`,
+        reviewerSub,
+    );
+    if (!res.ok) {
+        // The claim stands but the credit failed. Loud, because it needs a human.
+        return { ok: false, error: `BADGE TOKENS CLAIMED BUT NOT CREDITED for ${submissionId}: ${res.error}` };
+    }
+
+    return { ok: true, newlyPaid, tokens };
 }
 
 const now = () => new Date().toISOString();
@@ -457,6 +517,12 @@ export async function adjustUserTokens(sub: string, delta: number, reason: strin
         admin_sub: adminSub ?? null,
     });
     return { ok: true, tokens: next };
+}
+
+/** Every token grant and deduction ever recorded. Positive deltas are what the
+ *  program has actually committed to paying for; negatives are shop spends. */
+export async function listTokenAdjustments(): Promise<Row[]> {
+    return listAll(TABLE.tokenAdjustments);
 }
 
 export async function getAuthUserMeta(sub: string): Promise<{ role: string; banned: boolean; tokens: number }> {
@@ -775,7 +841,7 @@ export async function getSubForSlackId(slackId: string): Promise<string | null> 
 }
 
 // --- Pitches ----------------------------------------------------------------
-// A pitch is the idea a builder proposes *before* spending 20+ hours on it.
+// A pitch is the idea a builder proposes *before* spending 25+ hours on it.
 // Reviewers approve/reject it through the same Slack card + thread flow as a
 // project submission; an approved pitch is what unlocks project submission.
 

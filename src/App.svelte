@@ -142,7 +142,7 @@
       n: '02',
       r: '52% 48% 50% 50%/45% 52% 48% 55%',
       title: 'Build your app',
-      body: 'Minimum 20 hours per project. Log everything in Hackatime — reviewers verify every session.',
+      body: 'Minimum 25 hours per project. Log everything in Hackatime — reviewers verify every session.',
       cta: null,
     },
     {
@@ -177,22 +177,22 @@
   ]
 
   const badges = [
-    { char: '▲', label: 'Android Builder', desc: 'Built and shipped a fully functional Android app', bg: 'rgba(74,150,80,.16)', color: '#3d7a40' },
-    { char: '◉', label: 'iOS Shipper', desc: 'Built and shipped a fully functional iOS app', bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
-    { char: '✦', label: 'Gemini Integration', desc: 'Integrated Google Gemini AI into your project', bg: 'rgba(47,109,176,.16)', color: '#2f6db0' },
-    { char: '▣', label: 'Cider Crossover', desc: 'Connected to Apple\'s Cider ecosystem', bg: 'rgba(255,179,71,.2)', color: '#b07410' },
-    { char: '◆', label: 'Dual Platform', desc: 'Shipped on both Android and iOS', bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
+    { char: '▲', label: 'First Ship', desc: 'Get your first project through review and approved', bg: 'rgba(74,150,80,.16)', color: '#3d7a40' },
+    { char: '◈', label: 'Design Craft', desc: 'Interface work reviewers single out as exceptional', bg: 'rgba(47,109,176,.16)', color: '#2f6db0' },
+    { char: '▣', label: 'Deep Build', desc: 'Real architecture under the hood — not glue code', bg: 'rgba(255,179,71,.2)', color: '#b07410' },
+    { char: '◉', label: 'In The Wild', desc: 'Real people outside the program actually use it', bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
+    { char: '✦', label: 'All Rounder', desc: 'Ships and runs on both Android and iOS', bg: 'rgba(122,75,150,.16)', color: '#6b4b96' },
   ]
 
   const tiers = [
-    { icon: '◔', name: 'Starter', desc: 'Basic mechanics, clean UI, working features', mult: '1.0×', rate: '~$4 / hr', bg: '#fbf4e6', iconBg: 'rgba(91,79,68,.12)', iconR: '50%', cardR: '16px 11px 15px 12px/12px 15px 11px 16px', rot: '-.5deg', multColor: '#5b4f44', nameColor: '#1c1714', descColor: '#5b4f44', rateColor: '#5b4f44', shadow: '4px 4px 0 rgba(28,23,20,.13)' },
-    { icon: '◑', name: 'Builder', desc: 'Multiple systems, polished design, real-world value', mult: '1.25×', rate: '~$5 / hr', bg: '#fbf4e6', iconBg: 'rgba(255,107,53,.16)', iconR: '13px 9px 12px 8px/8px 12px 9px 13px', cardR: '11px 16px 12px 15px/15px 12px 16px 11px', rot: '.6deg', multColor: '#c2451a', nameColor: '#1c1714', descColor: '#5b4f44', rateColor: '#5b4f44', shadow: '4px 4px 0 rgba(28,23,20,.13)' },
-    { icon: '⚡', name: 'Elite ⚡', desc: 'Exceptional complexity, shipping quality — truly rare', mult: '1.5×', rate: 'up to $6 / hr', bg: 'var(--orange)', iconBg: 'rgba(255,255,255,.25)', iconR: '9px 13px 8px 12px/12px 8px 13px 9px', cardR: '15px 12px 16px 11px/11px 16px 12px 15px', rot: '-.7deg', multColor: '#fff', nameColor: '#fff', descColor: 'rgba(255,255,255,.85)', rateColor: 'rgba(255,255,255,.85)', shadow: '5px 5px 0 #1c1714' },
+    { icon: '◔', name: 'Starter', desc: 'Basic mechanics, clean UI, working features', mult: '1.0×', rate: '10 Ω / hr', bg: '#fbf4e6', iconBg: 'rgba(91,79,68,.12)', iconR: '50%', cardR: '16px 11px 15px 12px/12px 15px 11px 16px', rot: '-.5deg', multColor: '#5b4f44', nameColor: '#1c1714', descColor: '#5b4f44', rateColor: '#5b4f44', shadow: '4px 4px 0 rgba(28,23,20,.13)' },
+    { icon: '◑', name: 'Builder', desc: 'Multiple systems, polished design, real-world value', mult: '1.25×', rate: '12.5 Ω / hr', bg: '#fbf4e6', iconBg: 'rgba(255,107,53,.16)', iconR: '13px 9px 12px 8px/8px 12px 9px 13px', cardR: '11px 16px 12px 15px/15px 12px 16px 11px', rot: '.6deg', multColor: '#c2451a', nameColor: '#1c1714', descColor: '#5b4f44', rateColor: '#5b4f44', shadow: '4px 4px 0 rgba(28,23,20,.13)' },
+    { icon: '⚡', name: 'Elite ⚡', desc: 'Exceptional complexity, shipping quality — truly rare', mult: '1.5×', rate: 'up to 15 Ω / hr', bg: 'var(--orange)', iconBg: 'rgba(255,255,255,.25)', iconR: '9px 13px 8px 12px/12px 8px 13px 9px', cardR: '15px 12px 16px 11px/11px 16px 12px 15px', rot: '-.7deg', multColor: '#fff', nameColor: '#fff', descColor: 'rgba(255,255,255,.85)', rateColor: 'rgba(255,255,255,.85)', shadow: '5px 5px 0 #1c1714' },
   ]
 
   const rules = [
     { lead: 'No double dipping.', rest: ' Omega submissions cannot count toward any other YSWS program. No exceptions.', last: false },
-    { lead: '20 hours minimum per project.', rest: ' Hackatime logs required. Reviewers verify every session.', last: false },
+    { lead: '25 hours minimum per project.', rest: ' Hackatime logs required. Reviewers verify every session.', last: false },
     { lead: 'Max 2 projects', rest: ' per participant over the two-month window.', last: false },
     { lead: 'AI is allowed — but declare it.', rest: ' Copilot, Claude, Cursor, whatever helps you ship. The idea, the architecture, and the understanding have to be yours, and you tell us what you used it for when you submit. Undeclared AI is what gets you rejected — not AI.', last: false },
     { lead: 'Fraud = ban.', rest: ' Fulfillment cancelled, case sent to the Hack Club fraud team. Severity determines the ban length.', last: true },
@@ -209,7 +209,7 @@
 
   const faqs = [
     { q: 'Do I need to build Android AND iOS?', a: "You can build for both, it is not compulsory to create apps for both the platforms" },
-    { q: 'How does Ω tokens work?', a: 'Approved hours × tier multiplier = Ω tokens. Roughly $4–6 per hour. Spend it on anything in the shop.' },
+    { q: 'How does Ω tokens work?', a: 'Approved hours × tier multiplier = Ω tokens — 10 per hour at Starter, up to 15 at Elite. Spend them on anything in the shop.' },
     { q: 'Can I use AI to build my project?', a: "Yes. Use whatever tools help you ship — but you have to declare what you used them for when you submit. The rule is simple: you must be able to explain every line of your own code. A reviewer may ask, and \"the AI wrote it\" isn't an answer." },
     { q: 'What counts as a good AI disclosure?', a: "Be specific and be honest. \"Used Claude to debug my Room database migrations and generate the settings screen boilerplate\" is a great disclosure. \"Used AI a bit\" is not. Nobody has ever been rejected for an honest disclosure — people get rejected for hiding one." },
     { q: 'Can I also submit to other YSWS?', a: 'No. No double dipping with any other YSWS program whatsoever.' },
@@ -227,7 +227,7 @@
     { href: 'https://hackclub.com/slack', label: 'Slack' },
   ]
 
-  const tickerItems = ['You Ship', 'We Ship', 'Android', 'iOS', 'Build & Ship', 'Earn Badges', 'Shop Rewards', '20+ Hours', 'Tier System']
+  const tickerItems = ['You Ship', 'We Ship', 'Android', 'iOS', 'Build & Ship', 'Earn Badges', 'Shop Rewards', '25+ Hours', 'Tier System']
 </script>
 
 {#if authReady && user?.banned}
@@ -292,14 +292,11 @@
       <svg width="56" height="56" viewBox="0 0 24 24" fill="#1c1714"><path d="M17.05 12.54c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.88 2.65 3.22 2.6 1.29-.05 1.78-.83 3.34-.83 1.56 0 2 .83 3.37.81 1.39-.03 2.27-1.27 3.12-2.53.98-1.45 1.39-2.85 1.41-2.92-.03-.01-2.7-1.04-2.73-4.13Zm-2.59-7.59c.71-.86 1.19-2.06 1.06-3.25-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.15 1.14.09 2.3-.58 3.01-1.44Z"></path></svg>
     </div>
 
-    <div class="hero-deco" style="position:absolute; left:18%; bottom:13%; transform:rotate(-5deg); text-align:left; pointer-events:none;">
-      <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1rem; color:#1c1714; margin-bottom:2px;">real rewards</div>
-      <svg width="78" height="50" viewBox="0 0 78 50" fill="none"><path d="M4 6 C 30 0 56 14 70 38" stroke="#1c1714" stroke-width="2.5" fill="none" stroke-linecap="round"></path><path d="M70 38 l-13 -2 M70 38 l-2 -13" stroke="#1c1714" stroke-width="2.5" fill="none" stroke-linecap="round"></path></svg>
-    </div>
-
     <div style="display:inline-flex; align-items:center; gap:8px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:100px; padding:8px 18px; font-size:.7rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--orange); box-shadow:3px 3px 0 rgba(28,23,20,.13); transform:rotate(-1deg); margin-bottom:clamp(14px,2.4vh,30px);">
-      <span style="color:var(--orange); font-size:.85rem; line-height:1;">✦</span>
+      <a href="https://ysws.hackclub.com/" target="_blank" rel="noopener noreferrer" style="color:var(--orange); text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+        <span style="font-size:.9rem;">▣</span>
       You Ship, We Ship · 2026
+      </a>
     </div>
 
     <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:min(clamp(4rem,16vw,8.5rem),18vh); letter-spacing:-.03em; line-height:.82; text-shadow:4px 4px 0 rgba(255,69,0,.22), -3px -3px 0 rgba(47,109,176,.16);">
@@ -307,7 +304,6 @@
     </div>
 
     <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin:clamp(8px,1.4vh,22px) 0 clamp(6px,1vh,16px);">
-
     </div>
 
     <h1 style="font-family:'Syne',sans-serif; font-weight:700; font-size:clamp(1.3rem,3vw,2rem); color:#1c1714; max-width:600px; margin:0 auto clamp(8px,1.2vh,18px); line-height:1.25;">
@@ -371,7 +367,7 @@
     <div style="display:flex; gap:9px; flex-wrap:wrap; margin-bottom:34px;">
       <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; font-weight:700; font-size:.8rem; background:rgba(255,107,53,.14); color:#c2451a; transform:rotate(-1deg);">▲ Android app</span>
       <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-weight:700; font-size:.8rem; background:rgba(255,107,53,.14); color:#c2451a; transform:rotate(.8deg);">◉ iOS app</span>
-      <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; font-weight:700; font-size:.8rem; background:rgba(47,109,176,.13); color:#2f6db0; transform:rotate(-.6deg);">◷ 20+ hrs each</span>
+      <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; font-weight:700; font-size:.8rem; background:rgba(47,109,176,.13); color:#2f6db0; transform:rotate(-.6deg);">◷ 25+ hrs each</span>
       <span style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:2px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; font-weight:700; font-size:.8rem; background:rgba(47,109,176,.13); color:#2f6db0; transform:rotate(1deg);">❥ Max 2 projects</span>
     </div>
 
@@ -413,15 +409,15 @@
         <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:8px;">✦ Achievement badges</div>
         <p style="font-size:.9rem; color:#5b4f44; line-height:1.65; max-width:560px; margin-bottom:24px;">Unlock badges by hitting specific milestones. Click any badge to learn what it takes.</p>
 
-        <div style="display:flex; flex-wrap:nowrap; gap:20px; justify-content:center; overflow-x:auto; padding:8px 0;">
+        <div style="display:flex; flex-wrap:nowrap; gap:12px; padding:8px 0;">
           {#each badges as b (b.label)}
             <button
               type="button"
               onclick={() => selectedBadge = b.label}
-              style="all:unset; cursor:pointer;"
+              style="all:unset; cursor:pointer; flex:1 1 0; min-width:0;"
             >
               <div style="
-                padding:28px 24px;
+                padding:20px 10px;
                 border:2.5px solid #1c1714;
                 border-radius:16px;
                 background:{b.bg};
@@ -436,11 +432,12 @@
                 align-items:center;
                 justify-content:center;
                 gap:8px;
-                width:140px;
+                box-sizing:border-box;
+                width:100%;
                 height:140px;
               ">
-                <div style="font-size:3rem;">{b.char}</div>
-                <div style="font-size:.8rem; line-height:1.3;">{b.label}</div>
+                <div style="font-size:2.6rem; line-height:1;">{b.char}</div>
+                <div style="font-size:.78rem; line-height:1.25;">{b.label}</div>
               </div>
             </button>
           {/each}
@@ -488,7 +485,7 @@
     <div class="eyebrow">✦ The shop</div>
     <h2 class="sec-h">Spend your hours on real stuff</h2>
     <svg width="240" height="11" viewBox="0 0 240 11" fill="none" style="display:block; margin-bottom:16px;"><path d="M3 7 Q 30 2 56 6 T 112 6 T 168 6 T 236 5" stroke="var(--orange)" stroke-width="3" fill="none" stroke-linecap="round"></path></svg>
-    <p style="font-size:.95rem; color:#5b4f44; margin-bottom:30px; line-height:1.7; max-width:560px;">~$4–6 per approved hour based on your tier. No fixed reward — pick what you actually want from the shop.</p>
+    <p style="font-size:.95rem; color:#5b4f44; margin-bottom:30px; line-height:1.7; max-width:560px;">10–15 Ω per approved hour depending on your tier. No fixed reward — pick what you actually want from the shop.</p>
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:15px;">
       <!-- Mobile phones -->

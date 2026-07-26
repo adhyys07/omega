@@ -7,13 +7,18 @@ export type Badge = {
     color: string;
 };
 
+/** Ω tokens credited the first time a badge lands on a submission. Flat across
+ *  the catalog — if badges ever need different values, move this onto the Badge
+ *  type as an optional `tokens` field and default it to this. */
+export const TOKENS_PER_BADGE = 2;
+
 export const BADGES: Badge[] = [
-    { slug: 'android_builder',    label: 'Android Builder',    icon: '▲', criteria: 'Ships a working Android app.',                    bg: 'rgba(74,150,80,.16)',  color: '#3d7a40' },
-    { slug: 'ios_shipper',        label: 'iOS Shipper',        icon: '◉', criteria: 'Ships a working iOS app.',                        bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
-    { slug: 'gemini_integration', label: 'Gemini Integration',  icon: '✦', criteria: 'Meaningfully integrates Gemini.',                 bg: 'rgba(47,109,176,.16)', color: '#2f6db0' },
-    { slug: 'cider_crossover',    label: 'Cider Crossover',     icon: '▣', criteria: 'Built with / integrates Cider.',                  bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
-    { slug: 'dual_platform',      label: 'Dual Platform',       icon: '◆', criteria: 'Ships on BOTH Android and iOS.',                  bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
-    { slug: 'elite_tier',         label: 'Elite Tier',          icon: '⚡', criteria: 'Exceptional complexity and polish — rare.',       bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
+    { slug: 'first_ship',   label: 'First Ship',   icon: '▲', criteria: 'Get your first project approved.',                        bg: 'rgba(74,150,80,.16)',  color: '#3d7a40' },
+    { slug: 'design_craft', label: 'Design Craft', icon: '◈', criteria: 'Interface work reviewers single out as exceptional.',     bg: 'rgba(47,109,176,.16)', color: '#2f6db0' },
+    { slug: 'deep_build',   label: 'Deep Build',   icon: '▣', criteria: 'Real architecture under the hood — not glue code.',       bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
+    { slug: 'in_the_wild',  label: 'In The Wild',  icon: '◉', criteria: 'Real people outside the program actually use it.',        bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
+    { slug: 'all_rounder',  label: 'All Rounder',  icon: '✦', criteria: 'Ships and runs on both Android and iOS.',                 bg: 'rgba(122,75,150,.16)', color: '#6b4b96' },
+    { slug: 'elite_tier',   label: 'Elite Tier',   icon: '⚡', criteria: 'Exceptional complexity and polish — rare.',               bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
 ];
 
 const BY_SLUG = new Map(BADGES.map((b) => [b.slug, b]));

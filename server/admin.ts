@@ -14,7 +14,11 @@ import {
         setAuthUserBanned,
     adjustUserTokens,
     upsertAuthUser,
+    listSubmissions,
+    listPitches,
+    listTokenAdjustments,
 } from "./db.ts";
+import { TIERS, USD_PER_TOKEN, TOKENS_PER_HOUR } from "./tiers.ts";
 
 export default async function adminRoutes(app: FastifyInstance) {
     // Gate every admin route: 401 if not signed in, 403 if signed in but not an admin.
@@ -32,6 +36,68 @@ export default async function adminRoutes(app: FastifyInstance) {
 
     app.get('/api/admin/signups', { preHandler: requireAdmin }, async () => {
         return listSignups();
+    });
+
+    /** Dashboard counters and budget. Three full table scans, so it's a separate
+     *  route the UI loads on demand rather than something bolted onto a list endpoint. */
+    app.get('/api/admin/stats', { preHandler: requireAdmin }, async () => {
+        const [submissions, pitches, adjustments] = await Promise.all([
+            listSubmissions(), listPitches(), listTokenAdjustments(),
+        ]);
+
+        // Airtable leaves untouched number fields empty, so every read needs a
+        // fallback — Number(undefined) is NaN and would poison the whole sum.
+        const sum = (rows: typeof submissions, field: string) =>
+            rows.reduce((total, r) => {
+                const n = Number(r[field] ?? 0);
+                return total + (Number.isFinite(n) ? n : 0);
+            }, 0);
+
+        const approved = submissions.filter((s) => s.status === 'approved');
+        // 'changes_requested' is waiting on the BUILDER, not a reviewer — counting
+        // it here would overstate the queue a reviewer actually has to work through.
+        const awaitingReview = submissions.filter((s) => s.status === 'pending');
+
+        // Every grant lands here as a positive delta — project payouts, badge
+        // awards, and manual admin top-ups alike — so this one number is the whole
+        // committed spend with no risk of double-counting. Negatives are shop
+        // redemptions: tokens leaving circulation, not money we owe.
+        const tokensGranted = adjustments.reduce((total, a) => {
+            const d = Number(a.delta ?? 0);
+            return total + (Number.isFinite(d) && d > 0 ? d : 0);
+        }, 0);
+
+        // A pending project's tier isn't set until a reviewer approves it, so its
+        // cost is a RANGE, not a number: hours × 10 tokens, then ×1.0 (Starter) up
+        // to ×1.5 (Elite). Quoting a single figure here would be a guess dressed up
+        // as a fact.
+        const multipliers = TIERS.map((t) => t.multiplier);
+        const pendingTokensBase = sum(awaitingReview, 'hackatime_hours') * TOKENS_PER_HOUR;
+        const pendingTokensMin = pendingTokensBase * Math.min(...multipliers);
+        const pendingTokensMax = pendingTokensBase * Math.max(...multipliers);
+
+        return {
+            // approved_hours is what a reviewer signed off on; hackatime_hours is
+            // what the builder claimed and nobody has verified yet.
+            approved_hours: sum(approved, 'approved_hours'),
+            pending_hours: sum(awaitingReview, 'hackatime_hours'),
+            projects_pending: awaitingReview.length,
+            pitches_pending: pitches.filter((p) => p.status === 'pending').length,
+
+            // Sent rather than duplicated client-side: the frontend never imports
+            // from server/, so this keeps the explanatory copy honest if the rate
+            // or the tier ladder ever changes.
+            usd_per_token: USD_PER_TOKEN,
+            tokens_per_hour: TOKENS_PER_HOUR,
+            tier_multiplier_min: Math.min(...multipliers),
+            tier_multiplier_max: Math.max(...multipliers),
+            tokens_granted: tokensGranted,
+            tokens_pending_min: pendingTokensMin,
+            tokens_pending_max: pendingTokensMax,
+            budget_committed_usd: tokensGranted * USD_PER_TOKEN,
+            budget_pending_min_usd: pendingTokensMin * USD_PER_TOKEN,
+            budget_pending_max_usd: pendingTokensMax * USD_PER_TOKEN,
+        };
     });
 
     app.get('/api/admin/items', { preHandler: requireAdmin }, async () => {

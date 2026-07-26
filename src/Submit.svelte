@@ -49,7 +49,7 @@
   }
 
   const submitChecklist = [
-    "20+ hours logged in Hackatime (or a good reason why not)",
+    "25+ hours logged in Hackatime (or a good reason why not)",
     "Public code repo with a README",
     "Playable demo or video",
     "AI use declared (or 'None')",
@@ -57,12 +57,12 @@
   ]
   // Presentation only — the server whitelists which slugs can ever be awarded.
   const BADGE_META: Record<string, { icon: string; label: string; bg: string; color: string }> = {
-    android_builder:    { icon: '▲', label: 'Android Builder',    bg: 'rgba(74,150,80,.16)',  color: '#3d7a40' },
-    ios_shipper:        { icon: '◉', label: 'iOS Shipper',        bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
-    gemini_integration: { icon: '✦', label: 'Gemini Integration', bg: 'rgba(47,109,176,.16)', color: '#2f6db0' },
-    cider_crossover:    { icon: '▣', label: 'Cider Crossover',    bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
-    dual_platform:      { icon: '◆', label: 'Dual Platform',      bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
-    elite_tier:         { icon: '⚡', label: 'Elite Tier',         bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
+    first_ship:   { icon: '▲', label: 'First Ship',   bg: 'rgba(74,150,80,.16)',  color: '#3d7a40' },
+    design_craft: { icon: '◈', label: 'Design Craft', bg: 'rgba(47,109,176,.16)', color: '#2f6db0' },
+    deep_build:   { icon: '▣', label: 'Deep Build',   bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
+    in_the_wild:  { icon: '◉', label: 'In The Wild',  bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
+    all_rounder:  { icon: '✦', label: 'All Rounder',  bg: 'rgba(122,75,150,.16)', color: '#6b4b96' },
+    elite_tier:   { icon: '⚡', label: 'Elite Tier',   bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
   }
 
   let projects = $state<HtProject[]>([])
@@ -313,7 +313,7 @@
     <div style="text-align:center; max-width:520px; font-family:'Space Grotesk',sans-serif;">
       <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem; color:#1c1714; margin-bottom:8px;">💡 Pitch your idea first</div>
       <p style="color:#5b4f44; line-height:1.6;">
-        Projects need an <strong>approved pitch</strong> before you can submit them — that's how we make sure you don't sink 20+ hours into something we can't accept.
+        Projects need an <strong>approved pitch</strong> before you can submit them — that's how we make sure you don't sink 25+ hours into something we can't accept.
       </p>
       <a
         href="/pitch"

@@ -5,7 +5,7 @@ Omega is an official [Hack Club](https://hackclub.com/) You Ship, We Ship progra
 ## How it works
 
 1. Pitch your app idea and get it approved.
-2. Build for at least **20 hours**[can be changed when official launch], tracked with [Hackatime](https://hackatime.hackclub.com/).
+2. Build for at least **25 hours**, tracked with [Hackatime](https://hackatime.hackclub.com/).
 3. Submit your project on <a href="omega.hackclub.com/submit">Omega Form</a>.
 4. Get your project approved and earn Ω tokens and gain a multiplier based on approved hours and project quality.
 5. Spend your tokens in the Omega shop.

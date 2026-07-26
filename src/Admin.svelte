@@ -26,6 +26,7 @@
 
   const TOOLS = [
     { id: 'users',    label: '◉ Users',     href: '/admin' },
+    { id: 'stats',    label: '▤ Stats',      href: '/admin/stats' },
     { id: 'review',   label: '⚖ Review',    href: '/admin/review' },
     { id: 'orders',   label: '☑ Fulfillment',     href: '/admin/orders' },
     { id: 'items',    label: '▣ Shop items', href: '/admin/items' },
@@ -40,6 +41,9 @@
 
   const active = $derived(
     path.startsWith('/admin/review') ? 'review' :
+    // Before /admin/stages — otherwise "stats" would never match, since neither
+    // prefix is a prefix of the other but both are easy to mistype past.
+    path.startsWith('/admin/stats') ? 'stats' :
     path.startsWith('/admin/stages') ? 'stages' :
     path.startsWith('/admin/orders') ? 'orders' :
     path.startsWith('/admin/items') ? 'items' :
@@ -156,6 +160,53 @@
   let users = $state<AdminUser[]>([])
   let me = $state<{ name?: string; email?: string } | null>(null)
   let q = $state('')
+
+  type Stats = {
+    approved_hours: number
+    pending_hours: number
+    projects_pending: number
+    pitches_pending: number
+    usd_per_token: number
+    tokens_per_hour: number
+    tier_multiplier_min: number
+    tier_multiplier_max: number
+    tokens_granted: number
+    tokens_pending_min: number
+    tokens_pending_max: number
+    budget_committed_usd: number
+    budget_pending_min_usd: number
+    budget_pending_max_usd: number
+  }
+  let stats = $state<Stats | null>(null)
+  let statsStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle')
+
+  async function loadStats() {
+    statsStatus = 'loading'
+    try {
+      const res = await fetch('/api/admin/stats')
+      if (!res.ok) throw new Error()
+      stats = await res.json()
+      statsStatus = 'ready'
+    } catch {
+      statsStatus = 'error'
+    }
+  }
+
+  const STAT_CARDS = [
+    { key: 'approved_hours',   label: 'Hours approved',  hint: 'Signed off by a reviewer',  hours: true,  r: '16px 9px 15px 11px/11px 15px 9px 16px' },
+    { key: 'pending_hours',    label: 'Hours pending',   hint: 'Claimed, not yet verified', hours: true,  r: '9px 16px 11px 15px/15px 11px 16px 9px' },
+    { key: 'projects_pending', label: 'Projects in review', hint: 'Awaiting a reviewer',    hours: false, r: '15px 11px 16px 9px/9px 16px 11px 15px' },
+    { key: 'pitches_pending',  label: 'Pitches pending', hint: 'Awaiting a reviewer',       hours: false, r: '11px 15px 9px 16px/16px 9px 15px 11px' },
+  ] as const
+
+  // Hours come back as raw floats from Hackatime — 41.7 reads better than 41.66667.
+  const fmtStat = (n: number, hours: boolean) =>
+    hours ? (Math.round(n * 10) / 10).toLocaleString() : n.toLocaleString()
+
+  const usd = (n: number) =>
+    n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+
+  const tok = (n: number) => Math.round(n).toLocaleString()
 
   onMount(async () => {
     try {
@@ -378,6 +429,7 @@
   }
 
   $effect(()=> {
+    if (active === 'stats' && statsStatus === 'idle') loadStats()
     if (active === 'signups' && signupsStatus === 'idle') loadSignups()
     if (active === 'items' && itemsStatus === 'idle') loadItems()
     if (active === 'orders' && ordersStatus === 'idle') loadOrders()
@@ -419,6 +471,90 @@
   </header>
 
   <div style="max-width:1500px; margin:0 auto; padding:48px 24px 80px;">
+  {#if active === 'stats'}
+    <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>
+    <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,7vw,3.4rem); letter-spacing:-.02em; margin:0; text-shadow:3px 3px 0 rgba(255,69,0,.16);">Stats</h1>
+
+    {#if statsStatus === 'loading' || statsStatus === 'idle'}
+      <p style="color:#5b4f44; margin-top:24px;">Loading…</p>
+    {:else if statsStatus === 'error'}
+      <p style="color:#c2451a; font-weight:700; margin-top:24px;">Couldn't load stats. Is the server running?</p>
+    {:else if stats}
+      <p style="font-size:1rem; color:#5b4f44; margin:12px 0 32px; max-width:560px; line-height:1.6;">
+        Where the review queue stands right now.
+      </p>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:13px;">
+        {#each STAT_CARDS as c}
+          <div style="background:#fbf4e6; border:2.5px solid #1c1714; border-radius:{c.r}; padding:18px 20px; box-shadow:4px 4px 0 rgba(28,23,20,.13);">
+            <div style="font-family:'Syne',sans-serif; font-size:2.2rem; font-weight:800; color:var(--orange); line-height:1;">
+              {fmtStat(stats[c.key], c.hours)}
+            </div>
+            <div style="font-size:.9rem; font-weight:700; margin-top:8px;">{c.label}</div>
+            <div style="font-size:.75rem; color:#5b4f44; margin-top:3px; line-height:1.4;">{c.hint}</div>
+          </div>
+        {/each}
+      </div>
+
+      <h2 style="font-family:'Syne',sans-serif; font-weight:800; font-size:1.5rem; margin:44px 0 4px;">Budget</h2>
+      <p style="font-size:.85rem; color:#5b4f44; margin:0 0 20px; max-width:620px; line-height:1.6;">
+        {stats.tokens_per_hour} tokens per approved hour, multiplied by the project's tier
+        ({stats.tier_multiplier_min}× Starter → {stats.tier_multiplier_max}× Elite).
+        {#if stats.usd_per_token > 0}Tokens cost {usd(stats.usd_per_token * 10)} per 10.{/if}
+      </p>
+
+      {#if stats.usd_per_token <= 0}
+        <div style="background:rgba(255,179,71,.22); border:2.5px solid #1c1714; border-radius:16px 11px 15px 10px/10px 15px 11px 16px; box-shadow:5px 5px 0 rgba(28,23,20,.13); padding:18px 22px; max-width:620px;">
+          <div style="font-size:.9rem; font-weight:800; color:#b07410;">Token rate not configured</div>
+          <div style="font-size:.8rem; color:#5b4f44; margin-top:5px; line-height:1.6;">
+            Set <code>USD_PER_TOKEN</code> in the server environment to see budget figures.
+            Every dollar amount would read $0 until then, so they're hidden rather than shown wrong.
+          </div>
+        </div>
+      {:else}
+      <div style="background:#fbf4e6; border:2.5px solid #1c1714; border-radius:16px 11px 15px 10px/10px 15px 11px 16px; box-shadow:5px 5px 0 rgba(28,23,20,.13); padding:22px 24px; max-width:620px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding-bottom:13px;">
+          <div>
+            <div style="font-size:.9rem; font-weight:700;">Committed to date</div>
+            <div style="font-size:.74rem; color:#5b4f44; margin-top:2px;">{tok(stats.tokens_granted)} tokens granted — payouts, badges, manual grants</div>
+          </div>
+          <div style="font-family:'Syne',sans-serif; font-size:1.5rem; font-weight:800; white-space:nowrap;">{usd(stats.budget_committed_usd)}</div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:13px 0; border-top:1.5px dashed rgba(28,23,20,.25);">
+          <div>
+            <div style="font-size:.9rem; font-weight:700;">Pending review</div>
+            <div style="font-size:.74rem; color:#5b4f44; margin-top:2px;">
+              {tok(stats.tokens_pending_min)}–{tok(stats.tokens_pending_max)} tokens, depending on tier awarded
+            </div>
+          </div>
+          <div style="font-family:'Syne',sans-serif; font-size:1.5rem; font-weight:800; white-space:nowrap;">
+            {usd(stats.budget_pending_min_usd)}–{usd(stats.budget_pending_max_usd)}
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding-top:13px; border-top:2.5px solid #1c1714;">
+          <div style="font-size:.95rem; font-weight:800;">Projected total</div>
+          <div style="font-family:'Syne',sans-serif; font-size:1.8rem; font-weight:800; color:var(--orange); white-space:nowrap;">
+            {usd(stats.budget_committed_usd + stats.budget_pending_min_usd)}–{usd(stats.budget_committed_usd + stats.budget_pending_max_usd)}
+          </div>
+        </div>
+      </div>
+
+      <p style="font-size:.74rem; color:#5b4f44; margin:14px 0 0; max-width:620px; line-height:1.6;">
+        Pending figures use <em>claimed</em> Hackatime hours — a reviewer can approve fewer, so
+        the real cost usually lands below the top of the range. Projects not yet submitted
+        aren't counted at all.
+      </p>
+      {/if}
+
+      <button
+        onclick={loadStats}
+        style="margin-top:26px; padding:8px 16px; border:2px solid #1c1714; border-radius:10px 14px 9px 13px/13px 9px 14px 10px; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.82rem; cursor:pointer; box-shadow:2px 2px 0 rgba(28,23,20,.18); background:#fbf4e6; color:#1c1714;"
+      >↻ Refresh</button>
+    {/if}
+  {/if}
+
   {#if active === 'users'}
     <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>
     <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,7vw,3.4rem); letter-spacing:-.02em; margin:0; text-shadow:3px 3px 0 rgba(255,69,0,.16);">Users</h1>

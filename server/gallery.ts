@@ -1,8 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import { listSubmissions, getAuthUserBySub } from "./db.ts";
 
+const CACHE_DURATION_MS = 1000 * 60 * 5; // 5 minutes
+let cachedProjects: any[] | null = null;
+let cacheExpireAt = 0;
+
 export default async function galleryRoutes(app: FastifyInstance) {
-  app.get('/api/gallery/projects', async () => {
+  app.get('/api/gallery/projects', async (_req, reply) => {
+    const now = Date.now();
+    if (cachedProjects && now < cacheExpireAt) {
+      reply.header('X-Cache', 'HIT');
+      return cachedProjects;
+    }
     try {
       const submissions = await listSubmissions();
 
@@ -35,6 +44,11 @@ export default async function galleryRoutes(app: FastifyInstance) {
         }),
       );
 
+      cachedProjects = projects;
+      cacheExpireAt = now + CACHE_DURATION_MS;
+
+      reply.header('X-Cache', 'MISS');
+      reply.header('Cache-Control', 'public, max-age=300');
       return projects;
     } catch (err) {
       console.error('Failed to fetch gallery projects:', err);

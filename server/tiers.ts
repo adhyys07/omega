@@ -21,8 +21,22 @@ export function tierBySlug(slug: unknown): Tier | null {
 }
 
 export function computePayout(approvedHours: number, tier: Tier): number {
-    return Math.round(approvedHours * 10 * tier.multiplier);
+    return Math.round(approvedHours * TOKENS_PER_HOUR * tier.multiplier);
 }
+
+/** What a token costs the program, in USD. Read from the environment and
+ *  deliberately NOT defaulted to the real figure — the rate stays out of the
+ *  repo. Unset means 0, which makes every budget read $0 rather than quietly
+ *  reporting a made-up number; the admin panel flags that state explicitly.
+ *
+ *  Every budget figure derives from this and the multipliers above. Nothing
+ *  else should hardcode a dollar amount. */
+const parsedUsdPerToken = Number(process.env.USD_PER_TOKEN);
+export const USD_PER_TOKEN =
+    Number.isFinite(parsedUsdPerToken) && parsedUsdPerToken > 0 ? parsedUsdPerToken : 0;
+
+/** Tokens per approved hour BEFORE the tier multiplier — the 10 in computePayout. */
+export const TOKENS_PER_HOUR = 10;
 
 export const MAX_HOURS = 500;
 export const MIN_HOURS = 20;

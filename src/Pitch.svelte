@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
 
-  // Step 01 of the flow: propose the idea before spending 20+ hours building it.
+  // Step 01 of the flow: propose the idea before spending 25+ hours building it.
   // A reviewer approves the pitch, which is what unlocks project submission.
   let f = $state({ title: '', description: '', why: '', reference_file_url: '' })
 
@@ -156,7 +156,7 @@
             {editId ? 'Reship your pitch' : 'Pitch your idea'}
           </h1>
           <p style="font-family:'Space Grotesk',sans-serif; font-size:.8rem; color:#5b4f44; margin:0 0 2px;">
-            Tell us what you're building and how it'll help people. We'll review and get back to you, get this approved <strong>before</strong> you sink 20+ hours in.
+            Tell us what you're building and how it'll help people. We'll review and get back to you, get this approved <strong>before</strong> you sink 25+ hours in.
           </p>
 
           {#if editId && reviewFeedback}

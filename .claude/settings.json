@@ -30,7 +30,12 @@
       "Bash(netstat -ano)",
       "Bash(curl -s -m 4 http://localhost:3000/api/health)",
       "Read(//c/Users/adhdh/.claude/sessions/**)",
-      "PowerShell(& \"C:\\\\Users\\\\adhdh\\\\.vscode\\\\extensions\\\\anthropic.claude-code-2.1.205-win32-x64\\\\resources\\\\native-binary\\\\claude.exe\" --version)"
+      "PowerShell(& \"C:\\\\Users\\\\adhdh\\\\.vscode\\\\extensions\\\\anthropic.claude-code-2.1.205-win32-x64\\\\resources\\\\native-binary\\\\claude.exe\" --version)",
+      "PowerShell(heroku --version)",
+      "PowerShell(heroku apps:info -a omegaysws --json 2>&1)",
+      "PowerShell(heroku auth:whoami)",
+      "PowerShell(heroku config:set USD_PER_TOKEN=0.4 -a omegaysws)",
+      "PowerShell(npx svelte-check --tsconfig ./tsconfig.app.json --threshold warning --output human)"
     ]
   }
 }

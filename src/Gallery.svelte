@@ -62,9 +62,10 @@
 
     try {
       const r = await fetch('/api/gallery/projects')
-      if (!r.ok) throw new Error()
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
       projects = await r.json()
-    } catch {
+    } catch (e) {
+      console.error('Gallery error:', e)
       projectsError = true
     } finally {
       projectsReady = true
@@ -158,7 +159,7 @@
             </div>
 
             {#if project.badges && project.badges.length > 0}
-              <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+              <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; min-width:0;">
                 {#each project.badges as badge}
                   <span style="display:inline-block; font-size:.62rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border:1px solid #1c1714; border-radius:4px; background:rgba(255,69,0,.12); color:#c2451a;">
                     {badge}

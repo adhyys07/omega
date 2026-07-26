@@ -96,7 +96,7 @@ export default async function submissionRoutes(app: FastifyInstance) {
             return reply.code(400).send({ error: "Hackatime start date must be a YYYY-MM-DD date" });
         }
         if (b.hackatime_hours !== null && b.hackatime_hours !== undefined && b.hackatime_hours < 20) {
-            return reply.code(400).send({ error: "You need at least 20 hours to submit this project" });
+            return reply.code(400).send({ error: "You need at least 25 hours to submit this project" });
         }
 
         const mine = await listSubmissionsBySub(user.sub);

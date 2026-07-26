@@ -13,10 +13,10 @@ import {
         type Actor,
     mention, isReviewer, getSlackUsername,
 } from "./slack.ts";
-import { BADGES, sanitizeBadges, hydrate } from "./badges.ts";
+import { BADGES, sanitizeBadges, hydrate, TOKENS_PER_BADGE } from "./badges.ts";
 import { checkGithubRepo, fetchReadme } from "./github-api.ts";
 import { TIERS, tierBySlug, computePayout, MAX_HOURS } from "./tiers.ts";
-import { setSubmissionAssessment, payoutSubmission } from "./db.ts";
+import { setSubmissionAssessment, payoutSubmission, payBadgeTokens } from "./db.ts";
 /** Stored as a JSON string in Airtable; a malformed value must not break the panel. */
 
 
@@ -511,24 +511,38 @@ export default async function reviewRoutes(app: FastifyInstance) {
         const updated = await setSubmissionBadges(id, slugs, user.name ?? user.sub);
         if (!updated) return reply.code(500).send({ error: 'Failed to update badges' });
 
+        // Credit only badges this submission has never been paid for. A payout
+        // failure must not roll back the award — that's already persisted above.
+        let awardedTokens = 0;
+        if (slugs.length) {
+            try {
+                const pay = await payBadgeTokens(id, slugs, TOKENS_PER_BADGE, user.sub);
+                if (pay.ok) awardedTokens = pay.tokens;
+                else req.log.error({ submissionId: id, err: pay.error }, 'badge token payout failed');
+            } catch (err) {
+                req.log.error(err, 'badge token payout threw');
+            }
+        }
+
         // Telling the builder what they earned is the whole point — but never let
         // a Slack failure fail the award, which is already persisted.
         if (slugs.length) {
             const names = hydrate(slugs).map((b) => `${b.icon} ${b.label}`).join(', ');
+            const bonus = awardedTokens ? ` (+${awardedTokens} Ω)` : '';
             if (row.slack_channel && row.slack_ts) {
                 postInThread(
                     String(row.slack_channel), String(row.slack_ts),
-                    `🏅 ${mention(actorOf(user))} awarded badges: ${names}`,
+                    `🏅 ${mention(actorOf(user))} awarded badges: ${names}${bonus}`,
                 ).catch((err: unknown) => req.log.error(err, 'badge thread post failed'));
             }
             getSlackIdForSub(String(row.user_sub))
                 .then((slackId) => {
-                    if (slackId) return dmUser(slackId, `🏅 You earned badges on *${row.title}*: ${names}`);
+                    if (slackId) return dmUser(slackId, `🏅 You earned badges on *${row.title}*: ${names}${bonus}`);
                 })
                 .catch((err: unknown) => req.log.error(err, 'badge DM failed'));
         }
 
-        return { ok: true, badges: slugs };
+        return { ok: true, badges: slugs, tokens: awardedTokens };
     });
 
     app.post('/api/review/:id/message', { preHandler: requireRole('reviewer') }, async (req, reply) => {
