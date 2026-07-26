@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import ProfilePopover from './ProfilePopover.svelte'
   import Shop from './Shop.svelte'
+  import Gallery from './Gallery.svelte'
   import Admin from './Admin.svelte'
   import Forbidden from './Forbidden.svelte'
   import Banned from './Banned.svelte'
@@ -233,6 +234,8 @@
   <Banned />
 {:else if path === '/shop'}
   <Shop />
+{:else if path === '/gallery'}
+  <Gallery />
 {:else if path.startsWith('/admin')}
   {#if !authReady}
     <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; color:#5b4f44; background:#f4ead5;">Checking admin access…</div>
