@@ -395,7 +395,7 @@
       <svg width="200" height="11" viewBox="0 0 200 11" fill="none" style="display:block; margin-bottom:16px;"><path d="M3 7 Q 26 2 50 6 T 100 6 T 150 6 T 196 5" stroke="var(--orange)" stroke-width="3" fill="none" stroke-linecap="round"></path></svg>
       <p style="font-size:.95rem; color:#5b4f44; margin-bottom:30px; line-height:1.7; max-width:560px;">Every submission is scored across five dimensions. Nail them all and you're climbing into Elite tier.</p>
 
-      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:13px;">
+      <div class="crit-grid">
         {#each criteria as c}
           <div style="background:#fbf4e6; border:2.5px solid #1c1714; border-radius:{c.r}; padding:18px 16px; box-shadow:4px 4px 0 rgba(28,23,20,.13); transform:rotate({c.rot});">
             <div style="font-family:'Syne',sans-serif; font-size:1.7rem; font-weight:800; color:var(--orange); line-height:1; margin-bottom:8px;">{c.n}</div>
@@ -487,7 +487,7 @@
     <svg width="240" height="11" viewBox="0 0 240 11" fill="none" style="display:block; margin-bottom:16px;"><path d="M3 7 Q 30 2 56 6 T 112 6 T 168 6 T 236 5" stroke="var(--orange)" stroke-width="3" fill="none" stroke-linecap="round"></path></svg>
     <p style="font-size:.95rem; color:#5b4f44; margin-bottom:30px; line-height:1.7; max-width:560px;">10–15 Ω per approved hour depending on your tier. No fixed reward — pick what you actually want from the shop.</p>
 
-    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:15px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:15px;">
       <!-- Mobile phones -->
       <div style="position:relative; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:18px 11px 16px 12px/12px 16px 11px 18px; padding:22px 18px; box-shadow:5px 5px 0 rgba(28,23,20,.13); transform:rotate(-.6deg);">
         <div style="position:absolute; top:-11px; left:22px; width:64px; height:22px; background:rgba(255,179,71,.5); border:1px solid rgba(170,110,30,.3); transform:rotate(-4deg); mix-blend-mode:multiply;"></div>
@@ -516,6 +516,19 @@
         <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:800; margin-bottom:5px;">Dev gear</div>
         <div style="font-size:.8rem; color:#5b4f44; line-height:1.5;">Software, accessories, and productivity tools for serious builders.</div>
         <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 10px; border:1.5px solid #1c1714; border-radius:6px; background:rgba(255,179,71,.18); color:#b07410;">tools</span>
+      </div>
+      <!-- Unannounced — placeholders keep the grid square AND tease the catalog. -->
+      <div style="background:#fbf4e6; border:2.5px dashed #1c1714; border-radius:16px 12px 18px 11px/11px 18px 12px 16px; padding:22px 18px; box-shadow:5px 5px 0 rgba(28,23,20,.09); transform:rotate(-.8deg); opacity:.9;">
+        <div style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; border:2.5px dashed #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; background:rgba(91,79,68,.09); margin-bottom:14px; font-family:'Syne',sans-serif; font-size:1.5rem; font-weight:800; color:#5b4f44;">?</div>
+        <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:800; margin-bottom:5px;">Still under wraps</div>
+        <div style="font-size:.8rem; color:#5b4f44; line-height:1.5;">More rewards land in the shop as the program runs. You'll see them when they drop.</div>
+        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 10px; border:1.5px dashed #1c1714; border-radius:6px; background:rgba(91,79,68,.1); color:#5b4f44;">soon</span>
+      </div>
+      <div style="background:#fbf4e6; border:2.5px dashed #1c1714; border-radius:11px 18px 12px 16px/16px 12px 18px 11px; padding:22px 18px; box-shadow:5px 5px 0 rgba(28,23,20,.09); transform:rotate(.5deg); opacity:.9;">
+        <div style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; border:2.5px dashed #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; background:rgba(91,79,68,.09); margin-bottom:14px; font-family:'Syne',sans-serif; font-size:1.5rem; font-weight:800; color:#5b4f44;">?</div>
+        <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:800; margin-bottom:5px;">Something good</div>
+        <div style="font-size:.8rem; color:#5b4f44; line-height:1.5;">We're not saying yet. Ship something and find out.</div>
+        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 10px; border:1.5px dashed #1c1714; border-radius:6px; background:rgba(91,79,68,.1); color:#5b4f44;">soon</span>
       </div>
     </div>
   </div>
@@ -765,6 +778,29 @@
   @media (max-width: 980px) {
     .hero-deco {
       display: none !important;
+    }
+  }
+
+  /* Five criteria, five columns. An auto-fit/auto-fill track count lands on 4 at
+     this container width and strands the fifth card alone on its own row, so the
+     count is pinned instead of derived. minmax(0,1fr) rather than 1fr: a bare 1fr
+     floors at min-content, and the longer card bodies would push the row wider
+     than the container. */
+  .crit-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 13px;
+  }
+  /* Below ~820px five columns get too narrow to read; 2-then-1 keeps the cards
+     legible, and a stranded card reads as normal stacking at these widths. */
+  @media (max-width: 820px) {
+    .crit-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 520px) {
+    .crit-grid {
+      grid-template-columns: 1fr;
     }
   }
 
