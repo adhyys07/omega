@@ -10,26 +10,32 @@
   import Submit from './Submit.svelte'
   import Pitch from './Pitch.svelte'
 
-  const target = new Date('2026-07-27T00:00:00').getTime()
-  let d = $state('00')
-  let h = $state('00')
-  let m = $state('00')
-  let s = $state('00')
+  // Two edges matter, and which one depends on today's date. The old countdown
+  // only knew about the opening edge, so it read 00:00:00:00 from Jul 27 onward.
+  const OPENS  = new Date('2026-07-27T00:00:00').getTime()
+  const CLOSES = new Date('2026-09-15T23:59:59').getTime()
+
+  let now = $state(Date.now())
+
+  const phase = $derived(
+    now < OPENS ? 'before' : now > CLOSES ? 'closed' : 'open'
+  )
+  // Counts to whichever edge is next — the opening date before launch, the closing
+  // date once it is running. The original only knew about OPENS, so it sat at
+  // 00:00:00:00 for the six weeks after that date passed.
+  const remaining = $derived(Math.max(0, (phase === 'before' ? OPENS : CLOSES) - now))
 
   const pad = (n: number) => String(n).padStart(2, '0')
 
-  function tick() {
-    let diff = target - Date.now()
-    if (diff < 0) diff = 0
-    d = pad(Math.floor(diff / 86400000))
-    h = pad(Math.floor((diff % 86400000) / 3600000))
-    m = pad(Math.floor((diff % 3600000) / 60000))
-    s = pad(Math.floor((diff % 60000) / 1000))
-  }
+  const cdUnits = $derived([
+    { v: pad(Math.floor(remaining / 86400000)),             label: 'days' },
+    { v: pad(Math.floor((remaining % 86400000) / 3600000)), label: 'hrs'  },
+    { v: pad(Math.floor((remaining % 3600000) / 60000)),    label: 'min'  },
+    { v: pad(Math.floor((remaining % 60000) / 1000)),       label: 'sec'  },
+  ])
 
   onMount(() => {
-    tick()
-    const iv = setInterval(tick, 1000)
+    const iv = setInterval(() => (now = Date.now()), 1000)
     return () => clearInterval(iv)
   })
 
@@ -121,13 +127,6 @@
     { style: 'left:13%; top:62%; font-size:1.5rem; color:#1c1714; transform:rotate(9deg);', char: '✧' },
     { style: 'right:13%; bottom:24%; font-size:2.1rem; color:var(--orange); transform:rotate(-7deg);', char: '✦' },
     { style: 'left:9%; bottom:32%; font-size:1.2rem; color:#2f6db0; transform:rotate(16deg);', char: '✳' },
-  ]
-
-  const cdUnits = [
-    { get v() { return d }, label: 'days', radius: '16px 9px 15px 10px/10px 15px 9px 16px', rot: '-1.5deg' },
-    { get v() { return h }, label: 'hrs', radius: '10px 15px 9px 16px/15px 10px 16px 9px', rot: '1deg' },
-    { get v() { return m }, label: 'min', radius: '15px 10px 16px 9px/9px 16px 10px 15px', rot: '-.8deg' },
-    { get v() { return s }, label: 'sec', radius: '9px 16px 10px 15px/16px 9px 15px 10px', rot: '1.4deg' },
   ]
 
   const steps = [
@@ -292,18 +291,12 @@
       <svg width="56" height="56" viewBox="0 0 24 24" fill="#1c1714"><path d="M17.05 12.54c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.89-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.88 2.65 3.22 2.6 1.29-.05 1.78-.83 3.34-.83 1.56 0 2 .83 3.37.81 1.39-.03 2.27-1.27 3.12-2.53.98-1.45 1.39-2.85 1.41-2.92-.03-.01-2.7-1.04-2.73-4.13Zm-2.59-7.59c.71-.86 1.19-2.06 1.06-3.25-1.02.04-2.26.68-2.99 1.54-.66.76-1.23 1.98-1.08 3.15 1.14.09 2.3-.58 3.01-1.44Z"></path></svg>
     </div>
 
-    <div style="display:inline-flex; align-items:center; gap:8px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:100px; padding:8px 18px; font-size:.7rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--orange); box-shadow:3px 3px 0 rgba(28,23,20,.13); transform:rotate(-1deg); margin-bottom:clamp(14px,2.4vh,30px);">
-      <a href="https://ysws.hackclub.com/" target="_blank" rel="noopener noreferrer" style="color:var(--orange); text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-        <span style="font-size:.9rem;">▣</span>
-      You Ship, We Ship · 2026
-      </a>
+    <div style="font-size:.66rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:#8a7d6d; margin-bottom:clamp(10px,1.8vh,20px);">
+      <a href="https://ysws.hackclub.com/" target="_blank" rel="noopener noreferrer" style="color:inherit; text-decoration:none;">You Ship, We Ship · 2026</a>
     </div>
 
-    <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:min(clamp(4rem,16vw,8.5rem),18vh); letter-spacing:-.03em; line-height:.82; text-shadow:4px 4px 0 rgba(255,69,0,.22), -3px -3px 0 rgba(47,109,176,.16);">
+    <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:min(clamp(4rem,16vw,8.5rem),18vh); letter-spacing:-.008em; line-height:.98; text-shadow:4px 4px 0 rgba(255,69,0,.22), -3px -3px 0 rgba(47,109,176,.16);">
       <span style="color:var(--orange);">Ω</span><span style="color:#1c1714;">mega</span>
-    </div>
-
-    <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin:clamp(8px,1.4vh,22px) 0 clamp(6px,1vh,16px);">
     </div>
 
     <h1 style="font-family:'Syne',sans-serif; font-weight:700; font-size:clamp(1.3rem,3vw,2rem); color:#1c1714; max-width:600px; margin:0 auto clamp(8px,1.2vh,18px); line-height:1.25;">
@@ -311,22 +304,36 @@
     </h1>
     <p style="font-size:.95rem; color:#5b4f44; max-width:500px; margin:0 auto clamp(12px,1.8vh,28px); line-height:1.6;">Ship apps across two platforms, earn badges, and trade your approved hours in the Omega shop.</p>
 
-    <div style="display:inline-flex; align-items:center; gap:8px; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:100px; padding:12px 26px; font-weight:700; font-size:1rem; color:#1c1714; box-shadow:3px 3px 0 rgba(28,23,20,.13); transform:rotate(.6deg); margin-bottom:clamp(12px,2vh,34px);">
-      <span style="color:var(--orange);">▣</span> Jul 27 – Sep 15, 2026 &nbsp;·&nbsp; ~2 months
-    </div>
+    <p style="font-size:.8rem; color:#5b4f44; margin:0 auto clamp(10px,1.6vh,22px); text-decoration: none;">
+      A Hack Club YSWS by <a href="https://hackclub.enterprise.slack.com/team/U082UPTRQU8"><strong style="color:#1c1714;">Adhyys</strong></a>
+    </p>
 
-    <!-- Countdown -->
-    <div style="display:flex; justify-content:center; align-items:flex-start; gap:10px; margin-bottom:clamp(14px,2.2vh,32px); flex-wrap:wrap;">
-      {#each cdUnits as unit, i}
-        <div style="background:#fbf4e6; border:2.5px solid #1c1714; border-radius:{unit.radius}; padding:clamp(10px,1.6vh,16px) 22px; min-width:92px; box-shadow:4px 4px 0 rgba(28,23,20,.13); transform:rotate({unit.rot});">
-          <div style="font-family:'Syne',sans-serif; font-size:clamp(2rem,4.5vh,2.7rem); font-weight:800; color:var(--orange); line-height:1;">{unit.v}</div>
-          <div style="font-size:.66rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#5b4f44; margin-top:6px;">{unit.label}</div>
-        </div>
-        {#if i < cdUnits.length - 1}
-          <div style="font-family:'Syne',sans-serif; font-size:2rem; color:var(--orange); padding-top:14px;">✦</div>
-        {/if}
-      {/each}
-    </div>
+    <!-- Weight here comes from scale and colour only. A border or shadow would put
+         this back in the foreground plane with the wordmark, which is the whole
+         thing the pill pass was undoing. -->
+    {#if phase === 'closed'}
+      <div style="font-size:.95rem; color:#5b4f44; margin-bottom:clamp(16px,2.4vh,32px);">
+        Submissions closed · Jul 27 – Sep 15, 2026
+      </div>
+    {:else}
+      <div style="font-size:.7rem; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:#8a7d6d; margin-bottom:10px;">
+        {phase === 'before' ? 'Until Omega opens' : 'Until submissions close'}
+      </div>
+
+      <!-- Countdown, typographic: no containers at all. Scale and colour carry it,
+           the way the wordmark does, so nothing here competes for the foreground. -->
+      <div style="display:flex; justify-content:center; align-items:flex-start; gap:6px; margin-bottom:clamp(14px,2.2vh,32px); flex-wrap:wrap;">
+        {#each cdUnits as unit, i}
+          <div style="display:flex; flex-direction:column; align-items:center; gap:7px; min-width:72px;">
+            <span style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,5.5vh,3.3rem); color:var(--orange); line-height:1; font-variant-numeric:tabular-nums;">{unit.v}</span>
+            <span style="font-size:.62rem; font-weight:700; letter-spacing:.15em; text-transform:uppercase; color:#5b4f44;">{unit.label}</span>
+          </div>
+          {#if i < cdUnits.length - 1}
+            <span style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(1.7rem,4vh,2.4rem); color:rgba(255,69,0,.4); line-height:1.15;">:</span>
+          {/if}
+        {/each}
+      </div>
+    {/if}
 
     <div style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
       {#if !authReady}
@@ -336,10 +343,10 @@
       {:else}
         <a href="/api/auth/login" class="btn-primary" style="display:inline-flex; align-items:center; gap:8px; background:var(--orange); color:#fff; border:2.5px solid #1c1714; border-radius:15px 10px 16px 9px/9px 16px 10px 15px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 #1c1714;">Sign in with Hack Club</a>
       {/if}
-      <a href="#how" class="btn-ghost" style="display:inline-flex; align-items:center; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 rgba(28,23,20,.2);">How it works</a>
-      <a href="/docs" class="btn-ghost" style="display:inline-flex; align-items:center; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:9px 14px 8px 13px/13px 8px 14px 9px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 rgba(28,23,20,.2);">Guides</a>
+      <a href="#how" class="btn-ghost btn-quiet" style="display:inline-flex; align-items:center; background:transparent; color:#5b4f44; border:2.5px solid rgba(28,23,20,.32); border-radius:10px 15px 9px 16px/15px 10px 16px 9px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; ">How it works</a>
+      <a href="/docs" class="btn-ghost btn-quiet" style="display:inline-flex; align-items:center; background:transparent; color:#5b4f44; border:2.5px solid rgba(28,23,20,.32); border-radius:9px 14px 8px 13px/13px 8px 14px 9px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; ">Guides</a>
       {#if user}
-        <a href="/shop" class="btn-ghost" style="display:inline-flex; align-items:center; background:#fbf4e6; color:#1c1714; border:2.5px solid #1c1714; border-radius:13px 9px 14px 8px/8px 14px 9px 13px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; box-shadow:5px 5px 0 rgba(28,23,20,.2);">🛍 Shop</a>
+        <a href="/shop" class="btn-ghost btn-quiet" style="display:inline-flex; align-items:center; background:transparent; color:#5b4f44; border:2.5px solid rgba(28,23,20,.32); border-radius:13px 9px 14px 8px/8px 14px 9px 13px; padding:17px 36px; font-weight:700; font-size:1.12rem; text-decoration:none; ">🛍 Shop</a>
       {/if} 
     </div>
   </div>
@@ -494,28 +501,28 @@
         <div style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; border:2.5px solid #1c1714; border-radius:13px 9px 12px 8px/8px 12px 9px 13px; background:rgba(255,69,0,.14); margin-bottom:14px;"><svg width="24" height="24" viewBox="0 0 26 26" fill="none"><path d="M8.5 3 Q7 3 7 4.6 L7 21 Q7 22.6 8.6 22.6 L17 22.4 Q18.6 22.4 18.5 20.8 L18.4 4.5 Q18.4 3 16.8 3.1 Z" stroke="#1c1714" stroke-width="2" stroke-linejoin="round"></path><line x1="11" y1="19.6" x2="14.6" y2="19.4" stroke="#1c1714" stroke-width="2" stroke-linecap="round"></line></svg></div>
         <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:800; margin-bottom:5px;">Mobile phones</div>
         <div style="font-size:.8rem; color:#5b4f44; line-height:1.5;">Android or iOS devices from the catalog to test your apps on real hardware.</div>
-        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 10px; border:1.5px solid #1c1714; border-radius:6px; background:rgba(255,69,0,.12); color:#c2451a;">hardware</span>
+        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 9px; border-radius:4px; background:rgba(255,69,0,.14); color:#a83c14;">hardware</span>
       </div>
       <!-- Play Store license -->
       <div style="background:#fbf4e6; border:2.5px solid #1c1714; border-radius:11px 18px 12px 16px/16px 12px 18px 11px; padding:22px 18px; box-shadow:5px 5px 0 rgba(28,23,20,.13); transform:rotate(.7deg);">
         <div style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; border:2.5px solid #1c1714; border-radius:9px 13px 8px 12px/12px 8px 13px 9px; background:rgba(74,150,80,.16); margin-bottom:14px;"><svg width="24" height="24" viewBox="0 0 26 26" fill="none"><path d="M7.5 4 Q7 4 7.2 4.8 L7 20.5 Q7 21.4 7.9 20.9 L20 13.2 Q20.8 12.7 20 12.1 Z" stroke="#1c1714" stroke-width="2" stroke-linejoin="round"></path></svg></div>
         <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:800; margin-bottom:5px;">Play Store license</div>
         <div style="font-size:.8rem; color:#5b4f44; line-height:1.5;">$25 Google Play Developer account grant — publish your Android app.</div>
-        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 10px; border:1.5px solid #1c1714; border-radius:6px; background:rgba(74,150,80,.14); color:#3d7a40;">dev account</span>
+        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 9px; border-radius:4px; background:rgba(74,150,80,.16); color:#35682f;">dev account</span>
       </div>
       <!-- iOS dev license -->
       <div style="background:#fbf4e6; border:2.5px solid #1c1714; border-radius:16px 12px 18px 11px/11px 18px 12px 16px; padding:22px 18px; box-shadow:5px 5px 0 rgba(28,23,20,.13); transform:rotate(-.5deg);">
         <div style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; border:2.5px solid #1c1714; border-radius:12px 8px 13px 9px/9px 13px 8px 12px; background:rgba(28,23,20,.08); margin-bottom:14px;"><svg width="24" height="24" viewBox="0 0 26 26" fill="none"><path d="M13 9.2 C9.5 6.5 4.3 8.2 4.8 13.6 C5.2 19 9 22.3 13 20.8 C17 22.3 20.8 19 21.2 13.6 C21.7 8.2 16.5 6.5 13 9.2 Z" stroke="#1c1714" stroke-width="2" stroke-linejoin="round"></path><path d="M13.2 9 C13 6.3 14.6 4.3 17 3.6" stroke="#1c1714" stroke-width="2" stroke-linecap="round"></path></svg></div>
         <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:800; margin-bottom:5px;">iOS dev license</div>
         <div style="font-size:.8rem; color:#5b4f44; line-height:1.5;">$100 Apple Developer Membership — land your app on the App Store.</div>
-        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 10px; border:1.5px solid #1c1714; border-radius:6px; background:rgba(255,69,0,.12); color:#c2451a;">dev account</span>
+        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 9px; border-radius:4px; background:rgba(255,69,0,.14); color:#a83c14;">dev account</span>
       </div>
       <!-- Dev gear -->
       <div style="position:relative; background:#fbf4e6; border:2.5px solid #1c1714; border-radius:12px 16px 11px 18px/18px 11px 16px 12px; padding:22px 18px; box-shadow:5px 5px 0 rgba(28,23,20,.13); transform:rotate(.9deg);">
         <div style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; border:2.5px solid #1c1714; border-radius:8px 12px 9px 13px/13px 9px 12px 8px; background:rgba(255,179,71,.2); margin-bottom:14px;"><svg width="24" height="24" viewBox="0 0 26 26" fill="none"><path d="M13 8.5 Q9 8.5 8.6 12.6 Q8.4 16.8 13 17 Q17.4 16.8 17.2 12.6 Q16.8 8.5 13 8.5 Z" stroke="#1c1714" stroke-width="2" stroke-linejoin="round"></path><path d="M13 3.4 L13 5.8 M13 20.2 L13 22.6 M3.6 13 L6 12.9 M20 13 L22.4 12.9 M6.2 6.2 L8 8 M18 18 L19.8 19.8 M19.8 6.2 L18 8 M8 18 L6.2 19.8" stroke="#1c1714" stroke-width="2" stroke-linecap="round"></path></svg></div>
         <div style="font-family:'Syne',sans-serif; font-size:1rem; font-weight:800; margin-bottom:5px;">Dev gear</div>
         <div style="font-size:.8rem; color:#5b4f44; line-height:1.5;">Software, accessories, and productivity tools for serious builders.</div>
-        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 10px; border:1.5px solid #1c1714; border-radius:6px; background:rgba(255,179,71,.18); color:#b07410;">tools</span>
+        <span style="display:inline-block; margin-top:11px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:4px 9px; border-radius:4px; background:rgba(255,179,71,.22); color:#95610b;">tools</span>
       </div>
       <!-- Unannounced — placeholders keep the grid square AND tease the catalog. -->
       <div style="background:#fbf4e6; border:2.5px dashed #1c1714; border-radius:16px 12px 18px 11px/11px 18px 12px 16px; padding:22px 18px; box-shadow:5px 5px 0 rgba(28,23,20,.09); transform:rotate(-.8deg); opacity:.9;">
@@ -816,6 +823,14 @@
   .btn-ghost:hover {
     transform: translate(-2px, -2px);
     box-shadow: 7px 7px 0 rgba(28, 23, 20, 0.2);
+  }
+  /* Hero secondaries sit flat so the primary CTA is the only element in the
+     foreground plane alongside the wordmark. Overrides the shared ghost hover,
+     which would otherwise restore a hard shadow. */
+  .btn-quiet:hover {
+    box-shadow: none;
+    border-color: #1c1714;
+    color: #1c1714;
   }
   .step-link,
   .signup-btn {

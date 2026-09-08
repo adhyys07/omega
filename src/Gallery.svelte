@@ -28,8 +28,8 @@
   const SLACK_TEAM_URL = 'https://hackclub.slack.com/team/'
   const TIERS = ['All', 'Starter', 'Builder', 'Elite']
   const TIER_COLORS: Record<string, { bg: string; color: string }> = {
-    Starter: { bg: 'rgba(91,79,68,.12)', color: '#5b4f44' },
-    Builder: { bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
+    Starter: { bg: 'rgba(91,79,68,.14)', color: '#4e443a' },
+    Builder: { bg: 'rgba(255,107,53,.18)', color: '#a83c14' },
     Elite: { bg: 'var(--orange)', color: '#fff' },
   }
 
@@ -161,7 +161,7 @@
             {#if project.badges && project.badges.length > 0}
               <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; min-width:0;">
                 {#each project.badges as badge}
-                  <span style="display:inline-block; font-size:.62rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border:1px solid #1c1714; border-radius:4px; background:rgba(255,69,0,.12); color:#c2451a;">
+                  <span style="display:inline-block; font-size:.62rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border-radius:4px; background:rgba(255,69,0,.14); color:#a83c14;">
                     {badge}
                   </span>
                 {/each}
@@ -170,7 +170,7 @@
 
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
               <span
-                style="display:inline-block; padding:4px 10px; border:1.5px solid #1c1714; border-radius:6px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; background:{TIER_COLORS[project.tier]?.bg}; color:{TIER_COLORS[project.tier]?.color};"
+                style="display:inline-block; padding:4px 9px; border-radius:4px; font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; background:{TIER_COLORS[project.tier]?.bg}; color:{TIER_COLORS[project.tier]?.color};"
               >
                 {project.tier}
               </span>

@@ -57,12 +57,12 @@
   ]
   // Presentation only — the server whitelists which slugs can ever be awarded.
   const BADGE_META: Record<string, { icon: string; label: string; bg: string; color: string }> = {
-    first_ship:   { icon: '▲', label: 'First Ship',   bg: 'rgba(74,150,80,.16)',  color: '#3d7a40' },
-    design_craft: { icon: '◈', label: 'Design Craft', bg: 'rgba(47,109,176,.16)', color: '#2f6db0' },
-    deep_build:   { icon: '▣', label: 'Deep Build',   bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
-    in_the_wild:  { icon: '◉', label: 'In The Wild',  bg: 'rgba(255,107,53,.16)', color: '#c2451a' },
-    all_rounder:  { icon: '✦', label: 'All Rounder',  bg: 'rgba(122,75,150,.16)', color: '#6b4b96' },
-    elite_tier:   { icon: '⚡', label: 'Elite Tier',   bg: 'rgba(255,179,71,.2)',  color: '#b07410' },
+    first_ship:   { icon: '▲', label: 'First Ship',   bg: 'rgba(74,150,80,.16)',  color: '#35682f' },
+    design_craft: { icon: '◈', label: 'Design Craft', bg: 'rgba(47,109,176,.18)', color: '#28598f' },
+    deep_build:   { icon: '▣', label: 'Deep Build',   bg: 'rgba(255,179,71,.22)', color: '#95610b' },
+    in_the_wild:  { icon: '◉', label: 'In The Wild',  bg: 'rgba(255,107,53,.18)', color: '#a83c14' },
+    all_rounder:  { icon: '✦', label: 'All Rounder',  bg: 'rgba(122,75,150,.18)', color: '#5a3f80' },
+    elite_tier:   { icon: '⚡', label: 'Elite Tier',   bg: 'rgba(255,179,71,.22)', color: '#95610b' },
   }
 
   let projects = $state<HtProject[]>([])
@@ -530,7 +530,7 @@
                               {#if BADGE_META[slug]}
                                 <span
                                   title={BADGE_META[slug].label}
-                                  style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border:1.5px solid #1c1714; border-radius:6px; font-size:.62rem; font-weight:700; background:{BADGE_META[slug].bg}; color:{BADGE_META[slug].color};"
+                                  style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:4px; font-size:.62rem; font-weight:700; background:{BADGE_META[slug].bg}; color:{BADGE_META[slug].color};"
                                 >{BADGE_META[slug].icon} {BADGE_META[slug].label}</span>
                               {/if}
                             {/each}
