@@ -45,6 +45,9 @@
     hackatime_start_date: string | null
     review_feedback: string | null
     badges: string[]
+    /** Set by a hard reject: no new project may be submitted against this pitch
+     *  until an admin lifts it. The trust level behind that call is never sent here. */
+    resubmit_blocked?: boolean
     created_at: string
   }
 
@@ -112,7 +115,8 @@
   function prefillForEdit(id: string) {
     const s = submissions.find((x) => x.id === id)
     if (!s) { editId = null; return }  // not theirs, or not loaded — fall back to a fresh submission
-    if (s.status !== 'changes_requested') { editId = null; return }
+    // Withdrawing is reversible, so a withdrawn project prefills for reship too.
+    if (s.status !== 'changes_requested' && s.status !== 'withdrawn') { editId = null; return }
     reviewFeedback = s.review_feedback
     f.title = s.title ?? ''
     f.code_url = s.code_url ?? ''
@@ -192,10 +196,13 @@
   rejected: 'background:rgba(179,38,30,.14); color:#b3261e;',
   pending:  'background:rgba(255,179,71,.22); color:#b07410;',
   changes_requested: 'background:rgba(47,109,176,.14); color:#2f6db0;',
+  withdrawn: 'background:rgba(28,23,20,.10); color:#5b4f44;',
+  hard_rejected: 'background:rgba(179,38,30,.14); color:#b3261e;',
 }
 
   const STATUS_LABEL: Record<string, string> = {
     changes_requested: 'changes requested',
+    hard_rejected: 'rejected',
   }
 
   const fmtDate = (iso: string) => 
@@ -542,8 +549,10 @@
                         <span style="display:inline-block; padding:3px 9px; border:1.5px solid #1c1714; border-radius:6px; font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; {STATUS_STYLE[s.status] ?? STATUS_STYLE.pending}">
                           {STATUS_LABEL[s.status] ?? s.status}
                         </span>
-                        {#if s.status === 'changes_requested'}
+                        {#if s.status === 'changes_requested' || s.status === 'withdrawn'}
                           <a href="/submit?edit={s.id}" style="display:block; margin-top:4px; color:#2f6db0; font-size:.7rem; font-weight:700; text-decoration:none;">✏️ Reship →</a>
+                        {:else if s.resubmit_blocked}
+                          <span style="display:block; margin-top:4px; color:#b3261e; font-size:.7rem; font-weight:700;">🔒 Resubmission blocked</span>
                         {/if}
                       </td>
                       <td style="padding:11px 0; color:#5b4f44; white-space:nowrap;">{fmtDate(s.created_at)}</td>

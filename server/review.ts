@@ -5,6 +5,7 @@ import {
     getSubmissionByPitchId, listAuthUsers,
     approveSubmission, rejectSubmission, requestSubmissionChanges,
     approvePitch, rejectPitch, requestPitchChanges, getSlackIdForSub, type Row,
+    hardRejectSubmission, clearResubmitBlock,
 } from "./db.ts";
 import {
     fetchThreadReplies, postReviewerMessage, dmUser, postInThread, updateReviewCard,
@@ -15,12 +16,13 @@ import {
 } from "./slack.ts";
 import { BADGES, sanitizeBadges, hydrate, TOKENS_PER_BADGE } from "./badges.ts";
 import { checkGithubRepo, fetchReadme } from "./github-api.ts";
+import { refreshHackatimeTrust } from "./hackatime.ts";
 import { TIERS, tierBySlug, computePayout, MAX_HOURS } from "./tiers.ts";
 import { setSubmissionAssessment, payoutSubmission, payBadgeTokens } from "./db.ts";
 /** Stored as a JSON string in Airtable; a malformed value must not break the panel. */
 
 
-type ReviewAction = 'approve' | 'reject' | 'request_changes';
+type ReviewAction = 'approve' | 'reject' | 'hard_reject' | 'request_changes';
 type GithubPayload = {
     check: Awaited<ReturnType<typeof checkGithubRepo>>;
     // null when the repo is private, missing, or simply has no README — all normal
@@ -34,6 +36,9 @@ const GH_TTL_MS = 5*60*1000;  // 5 minutes
 const ACTION_STATE: Record<ReviewAction, SubmissionState> = {
     approve: 'approved',
     reject: 'rejected',
+    // Its own state, matching what hardRejectSubmission writes — so the card banner,
+    // the panel and Airtable never disagree about which kind of rejection this was.
+    hard_reject: 'hard_rejected',
     request_changes: 'changes_requested',
 };
 
@@ -103,7 +108,11 @@ async function applyReviewAction(
             overrideHourJustification: privateNote,
             userFeedback: publicNote,
         });
-    } else {
+    } else if (action === 'hard_reject') {
+        if (isPitch) await rejectPitch(id, actor.name);
+        else await hardRejectSubmission(id, actor.name, publicNote);
+    }
+     else {
         if (isPitch) await rejectPitch(id, actor.name);
         else await rejectSubmission(id, actor.name);
     }
@@ -156,7 +165,9 @@ async function applyReviewAction(
                     : `🎉 Your Omega submission *${row.title}* was approved by ${mention(actor)}!${extra}`;
             } else {
                 const extra = publicNote ? `\n\n>${publicNote.replace(/\n/g, '\n>')}` : '';
-                dm = `Your Omega ${label} *${row.title}* was rejected by ${mention(actor)}. Ask in #omega if you'd like context.${extra}`;
+                dm = action === 'hard_reject'
+                    ? `Your Omega ${label} *${row.title}* was rejected by ${mention(actor)}, and resubmitting this project is blocked until an admin lifts it. Ask in #omega if you'd like context.${extra}`
+                    : `Your Omega ${label} *${row.title}* was rejected by ${mention(actor)}. Ask in #omega if you'd like context.${extra}`;
             }
             await dmUser(slackId, dm);
         } catch (err) {
@@ -184,7 +195,7 @@ function actionHandler(kind: ReviewKind) {
         };
 
         const action = body.action as ReviewAction;
-        if (!['approve', 'reject', 'request_changes'].includes(action ?? '')) {
+        if (!['approve', 'reject', 'hard_reject', 'request_changes'].includes(action ?? '')) {
             return reply.code(400).send({ error: 'Unknown action' });
         }
 
@@ -193,6 +204,10 @@ function actionHandler(kind: ReviewKind) {
         // Sending someone back with no explanation is the worst possible UX.
         if (action === 'request_changes' && !userFeedback) {
             return reply.code(400).send({ error: 'Describe what needs to change' });
+        }
+        // A block the builder cannot lift themselves must come with a reason they read.
+        if (action === 'hard_reject' && !userFeedback) {
+            return reply.code(400).send({ error: 'Explain the block — the builder sees this' });
         }
         if (userFeedback.length > 4000) {
             return reply.code(400).send({ error: 'Feedback is too long' });
@@ -275,6 +290,10 @@ export default async function reviewRoutes(app: FastifyInstance) {
                 submitter_email: auth?.email ?? r.email ?? null,
                 submitter_slack_id: auth?.slack_id ?? null,
                 submitter_slack_username: auth?.slack_username ?? null,
+                // Reviewer-only. Last-known Hackatime trust for whoever submitted this,
+                // shown on their project so a reviewer weighing a payout can see it.
+                // Never sent to any builder-facing endpoint.
+                submitter_trust: auth?.hackatime_trust ?? null,
                 status: r.status,
                 code_url: r.code_url ?? null,
                 demo_video_url: r.demo_video_url ?? null,
@@ -295,9 +314,62 @@ export default async function reviewRoutes(app: FastifyInstance) {
                 approved_hours: r.approved_hours ?? null,
                 payout_tokens: r.payout_tokens ?? null,
                 paid_at: r.paid_at ?? null,
+                // The hard-reject lock, so the panel can offer an admin the unlock.
+                resubmit_blocked: !!r.resubmit_blocked,
+                resubmit_blocked_reason: r.resubmit_blocked_reason ?? null,
                 created_at: r.created_at ?? null,
             };
         });
+    });
+
+    /** Lifts a hard reject's resubmit lock. Deliberately `admin`, not `reviewer`: the
+     *  reviewer who blocked it should not be the one who quietly unblocks it. The row
+     *  stays hard_rejected — this only restores the right to submit a fresh project
+     *  against the same pitch. */
+    app.post('/api/review/submissions/:id/unblock', { preHandler: requireRole('admin') }, async (req, reply) => {
+        const user = getSessionUser(req)!;
+        const { id } = req.params as { id: string };
+        const row = await getSubmissionById(id);
+        if (!row) return reply.code(404).send({ error: 'Not found' });
+        if (!row.resubmit_blocked) return reply.code(409).send({ error: 'That submission is not blocked' });
+
+        const updated = await clearResubmitBlock(id, user.name ?? user.sub);
+        if (!updated) return reply.code(500).send({ error: 'Could not unlock' });
+
+        // Best-effort, like every other Slack side-effect: a missing bot token must not
+        // turn a recorded unlock into a 500.
+        void (async () => {
+            try {
+                const slackId = await getSlackIdForSub(String(row.user_sub));
+                if (slackId) {
+                    await dmUser(slackId, `🔓 An admin unblocked resubmissions for *${row.title}*. You can submit a new project against that pitch: ${frontendUrl()}/submit`);
+                }
+            } catch (err) {
+                req.log.error(err, 'unblock notify failed');
+            }
+        })();
+
+        return { ok: true, resubmit_blocked: false };
+    });
+
+    /** Live Hackatime trust for one project's submitter. Reviewer-only, and read on
+     *  demand rather than from Airtable: approving pays real tokens, and the stored
+     *  level is only refreshed at login, so it can be months out of date.
+     *  Side-effect by design — it also reconciles the ban, like every other trust read. */
+    app.get('/api/review/submissions/:id/trust', { preHandler: requireRole('reviewer') }, async (req, reply) => {
+        const { id } = req.params as { id: string };
+        const row = await getSubmissionById(id);
+        if (!row) return reply.code(404).send({ error: 'Not found' });
+
+        try {
+            const trust = await refreshHackatimeTrust(String(row.user_sub ?? ''));
+            // linked:false means no Hackatime account at all — distinct from a linked
+            // account whose trust we simply could not read (level stays null).
+            return trust ? { linked: true, ...trust } : { linked: false, level: null, value: null };
+        } catch (err) {
+            req.log.error(err, 'live trust lookup failed');
+            return reply.code(502).send({ error: 'Could not reach Hackatime' });
+        }
     });
 
         app.get('/api/review/pitches', { preHandler: requireRole('reviewer') }, async (req) => {

@@ -8,6 +8,9 @@
   // The dev routes are not registered at all unless ALLOW_DEV_TOOLS=1, so a 404 here
   // is the honest answer to "are dev tools on?" — no need for a separate config flag.
   let devEnabled = $state(false)
+  // Separates "probe still in flight" from "probe came back off", so the page
+  // never flashes a disabled notice before it knows the answer.
+  let devChecked = $state(false)
 
   onMount(() => {
     const onPop = () => (path = location.pathname)
@@ -15,6 +18,7 @@
     fetch('/api/admin/dev/stages', { credentials: 'include' })
       .then((r) => { devEnabled = r.ok })
       .catch(() => { devEnabled = false })
+      .finally(() => { devChecked = true })
     return () => removeEventListener('popstate', onPop)
   })
 
@@ -31,7 +35,6 @@
     { id: 'orders',   label: '☑ Fulfillment',     href: '/admin/orders' },
     { id: 'items',    label: '▣ Shop items', href: '/admin/items' },
     { id: 'signups',  label: '✉ Signups',    href: '/admin/signups' },
-    { id: 'stages',   label: '⚡ Stage jump', href: '/admin/stages' },
   ]
 
   const tools = $derived(
@@ -49,7 +52,6 @@
     path.startsWith('/admin/orders') ? 'orders' :
     path.startsWith('/admin/items') ? 'items' :
     path.startsWith('/admin/signups') ? 'signups' :
-    path.startsWith('/admin/stages') ? 'stages' :
     'users'
   )
 
@@ -869,7 +871,17 @@
     <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>
     <h1 style="font-family:'Syne',sans-serif; font-weight:800; font-size:clamp(2.2rem,7vw,3.4rem); letter-spacing:-.02em; margin:0 0 8px; text-shadow:3px 3px 0 rgba(255,69,0,.16);">Stage jump</h1>
     <p style="font-size:1rem; color:#5b4f44; margin:0 0 24px;">Drop your own account at any point in the builder flow, then walk it as a builder would.</p>
-    <Stages />
+    <!-- The route is reachable by typing the URL, so the page must answer for itself
+         rather than showing buttons that post to routes the server never registered. -->
+    {#if devEnabled}
+      <Stages />
+    {:else if devChecked}
+      <div style="padding:16px 18px; border:2.5px dashed rgba(28,23,20,.28); border-radius:12px; background:rgba(255,179,71,.09); font-family:'Space Grotesk',sans-serif; font-size:.92rem; line-height:1.65; color:#5b4f44;">
+        <strong style="color:#1c1714;">Dev tools are off.</strong>
+        This server has not registered <code>/api/admin/dev/*</code>, so the stage buttons would post to routes that do not exist.
+        Set <code>ALLOW_DEV_TOOLS=1</code> in <code>.env</code> and restart the server to switch them on.
+      </div>
+    {/if}
 
   {:else if active === 'signups'}
     <div style="font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:var(--orange); margin-bottom:10px;">✦ Admin</div>

@@ -5,7 +5,7 @@ import {
   getSubmissionById, setSubmissionSlackRef, requestSubmissionChanges,
   resubmitSubmission, getSlackIdForSub, type SubmissionInput,
   getPitchById, approvePitch, rejectPitch, requestPitchChanges, listApprovedPitchesBySub,
-  withdrawSubmission, withdrawPitch,
+  withdrawSubmission, withdrawPitch, findResubmitBlock, RESHIPPABLE_STATUSES
 } from './db.ts';
 import {
   notifySlackOfNewSubmission, verifySlackSignature, isReviewer, updateSubmissionCard,
@@ -87,6 +87,14 @@ export default async function submissionRoutes(app: FastifyInstance) {
         if (pitch.status !== "approved") {
             return reply.code(409).send({ error: "That pitch hasn't been approved yet" });
         }
+        const block = await findResubmitBlock(String(b.pitch_id));
+        if (block) {
+            return reply.code(403).send({
+                error: block.resubmit_blocked_reason
+                    ? `A reviewer blocked resubmissions for this pitch: ${block.resubmit_blocked_reason}`
+                    : "A reviewer blocked resubmissions for this pitch. An admin has to unlock it.",
+            });
+        }
 
         if (b.demo_video_url && !/^https:\/\//i.test(b.demo_video_url.trim())) {
             return reply.code(400).send({ error: "Demo video URL must be an https link" });
@@ -143,13 +151,19 @@ export default async function submissionRoutes(app: FastifyInstance) {
     app.patch('/api/submissions/:id', async (req, reply) => {
         const user = getSessionUser(req);
         if (!user) return reply.status(401).send({ error: 'Unauthorized' });
+        
 
         const { id } = req.params as { id: string };
         const row = await getSubmissionById(id);
         if (!row) return reply.code(404).send({ error: 'Not found' });
         if (row.user_sub !== user.sub) return reply.code(403).send({ error: 'Not your submission' });
-        if (row.status !== 'changes_requested') {
-            return reply.code(409).send({ error: 'Only submissions with requested changes can be reshipped' });
+        if (!RESHIPPABLE_STATUSES.has(String(row.status))) {
+            return reply.code(409).send({ error: 'Only submissions that were sent back or withdrawn can be reshipped' });
+        }
+        // Checked per pitch, not per row: a hard-rejected sibling must also close off
+        // reshipping a withdrawn row that hangs off the same pitch.
+        if (await findResubmitBlock(String(row.pitch_id ?? ''))) {
+            return reply.code(403).send({ error: 'Resubmissions are blocked for this pitch until an admin unlocks it' });
         }
 
         const b = (req.body ?? {}) as Partial<SubmissionInput>;
@@ -309,6 +323,11 @@ export default async function submissionRoutes(app: FastifyInstance) {
                     if (ch && t) {
                         await postInThread(ch, t, `🗑 <@${clicker}> withdrew this — it's out of the review queue.`);
                         await updateReviewCard(kind, ch, t, row, "withdrawn", clicker);
+                        // Withdrawing is reversible now, so leave them the way back in.
+                        // The old ephemeral is gone the moment the card re-renders.
+                        await postBuilderControls(
+                            kind, { ...row, slack_channel: ch, slack_ts: t }, "withdrawn", clicker,
+                        );
                     }
                 } catch (err) {
                     req.log.error(err, "builder action failed");

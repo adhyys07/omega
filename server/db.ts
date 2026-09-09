@@ -21,6 +21,7 @@ const TABLE = {
     yswsSubmissions: "YSWS Project Submission",
 } as const;
 
+export const RESHIPPABLE_STATUSES = new Set(["changes_requested", "withdrawn"]);
 
 export type Assessment = { tier: string; approved_hours: number };
 
@@ -726,6 +727,8 @@ export async function listSubmissionsBySub(sub: string): Promise<Row[]> {
         ai_used: bool(r.ai_used),
         ai_disclosure: r.ai_disclosure ?? null,
         badges: Array.isArray(r.badges) ? r.badges : [],
+        resubmit_blocked: bool(r.resubmit_blocked),         
+        resubmit_blocked_reason: r.resubmit_blocked_reason ?? null, 
         created_at: r.created_at ?? null,
     }));
 }
@@ -753,6 +756,36 @@ export async function withdrawSubmission(id: string): Promise<void> {
     await updateRecord(TABLE.projectSubmissions, id, {
         status: "withdrawn", reviewed_at: now(),
     });
+}
+
+export async function hardRejectSubmission(id: string, reviewer: string, reason: string): Promise<void> {
+    const at = now();
+    await updateRecord(TABLE.projectSubmissions, id, {
+        status: "hard_rejected",
+        review_feedback: reason,
+        reviewed_by: reviewer,
+        reviewed_at: at,
+        resubmit_blocked: true,
+        resubmit_blocked_reason: reason,
+        resubmit_blocked_by: reviewer,
+        resubmit_blocked_at: at,
+    });
+}
+
+export async function clearResubmitBlock(id: string, admin: string): Promise<Row | null> {
+    return updateRecord(TABLE.projectSubmissions, id, {
+        resubmit_blocked: false,
+        resubmit_blocked_by: admin,
+        resubmit_blocked_at: now(),
+    });
+}
+
+export async function findResubmitBlock(pitchId: string): Promise<Row | null> {
+    if (!pitchId) return null;
+    return findOne(
+        TABLE.projectSubmissions,
+        `AND({pitch_id}='${esc(pitchId)}',{resubmit_blocked}=1)`,
+    );
 }
 
 export async function withdrawPitch(id: string): Promise<void> {

@@ -3,7 +3,7 @@ import "@fastify/cookie"; // loads the type augmentation for reply.setCookie / r
 import crypto from "node:crypto";
 import { getSessionUser } from "./auth.ts";
 import { setHackatimeToken, getHackatimeToken, syncBanFromTrust } from "./db.ts";
-import { fetchHackatimeTrustLevel, fetchHackatimeProjectDetails } from "./hackatime-api.ts";
+import { fetchHackatimeTrust, fetchHackatimeProjectDetails, type HackatimeTrust } from "./hackatime-api.ts";
 
 const BASE =  process.env.HACKATIME_BASE_URL ?? 'https://hackatime.hackclub.com';
 const AUTHORIZE_URL = `${BASE}/oauth/authorize`;
@@ -15,6 +15,21 @@ const SCOPES = process.env.HACKATIME_SCOPES || "read profile";
 const STATE_COOKIE = 'hackatime_oauth_state';
 
 const isProd = process.env.NODE_ENV === 'production';
+
+/** Re-reads one user's Hackatime trust with the token we already hold, and reconciles
+ *  their ban while we're there. Returns null when they never linked Hackatime.
+ *
+ *  Lives here rather than in db.ts so db.ts keeps no dependency on hackatime-api.
+ *  Worth calling on demand: tokens last ~16 years and trust is otherwise only
+ *  re-read at login, so a stored level can be arbitrarily stale. */
+export async function refreshHackatimeTrust(sub: string): Promise<HackatimeTrust | null> {
+    if (!sub) return null;
+    const token = await getHackatimeToken(sub);
+    if (!token) return null;
+    const trust = await fetchHackatimeTrust(token);
+    await syncBanFromTrust(sub, trust.level);
+    return trust;
+}
 
 export default async function hackatimeRoutes(app: FastifyInstance) {
     app.get('/api/hackatime/login', async (req, reply) => {
@@ -75,8 +90,8 @@ export default async function hackatimeRoutes(app: FastifyInstance) {
             await setHackatimeToken(user.sub, tok.access_token);
 
             // Gate access on Hackatime trust: red → banned, recovered → unbanned.
-            const trust = await fetchHackatimeTrustLevel(tok.access_token);
-            await syncBanFromTrust(user.sub, trust);
+            const trust = await fetchHackatimeTrust(tok.access_token);
+            await syncBanFromTrust(user.sub, trust.level);
 
             reply.clearCookie(STATE_COOKIE, { path: '/' });
             return reply.redirect(process.env.FRONTEND_URL || "/");

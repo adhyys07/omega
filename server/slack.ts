@@ -19,7 +19,7 @@ export function isReviewer(slackUserId?: string): boolean {
 }
 
 export type SubmissionState =
-    | 'pending' | 'changes_requested' | 'approved' | 'rejected' | 'withdrawn';
+    | 'pending' | 'changes_requested' | 'approved' | 'rejected' | 'withdrawn' | 'hard_rejected';
 
 export type Actor = { name: string; slackId?: string | null };
 
@@ -47,6 +47,7 @@ const STATE_BANNER: Record<SubmissionState, string> = {
     approved: '✅ *Approved* — promoted to YSWS',
     rejected: '❌ *Rejected*',
     withdrawn: '🗑 *Withdrawn by the builder*',
+    hard_rejected: '⛔ *Rejected* — resubmission blocked',
 };
 
 async function slackGet<T = Record<string, unknown>>(
@@ -208,14 +209,17 @@ export function builderControlBlocks(kind: ReviewKind, row: Row, state: Submissi
     const edit = isPitch ? pitchEditLink(String(row.id)) : editLink(String(row.id));
     const elements: unknown[] = [];
 
-    if (state === 'changes_requested'){
+    // `withdrawn` is here so withdrawing stays reversible — the builder pulled this
+    // out of the queue themselves, so they get to put it back. A hard reject never
+    // reaches this branch: it lands on `hard_rejected`, which offers no way back.
+    if (state === 'changes_requested' || state === 'withdrawn'){
         elements.push({
             type: 'button',
             style: 'primary',
             text: { type: 'plain_text', text: 'Edit and reship' },
             url: edit, value, action_id: 'builder_reship',
         });
-    } 
+    }
 
     if ( state === 'pending' || state === 'changes_requested') {
         elements.push({
@@ -240,7 +244,9 @@ export function builderControlBlocks(kind: ReviewKind, row: Row, state: Submissi
                 type: 'mrkdwn',
                 text: state === 'changes_requested'
                     ? '✏️ *A reviewer asked for changes.* Only you can see these buttons.'
-                    : '⏳ *Awaiting review.* Only you can see these buttons.',
+                    : state === 'withdrawn'
+                        ? '🗑 *You withdrew this.* Reship it whenever you are ready — only you can see these buttons.'
+                        : '⏳ *Awaiting review.* Only you can see these buttons.',
             }],
         },
             { type: 'actions', block_id: value, elements },

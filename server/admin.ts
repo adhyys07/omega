@@ -11,7 +11,7 @@ import {
     listAuthUsers,
     getAuthUserBySub,
     setAuthUserRole,
-        setAuthUserBanned,
+    setAuthUserBanned,
     adjustUserTokens,
     upsertAuthUser,
     listSubmissions,

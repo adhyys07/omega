@@ -49,17 +49,41 @@ export async function fetchHackatimeProjectDetails(accessToken: string): Promise
     });
 }
 
-/** Fetch the user's Hackatime trust level (e.g. "red", "yellow", "green", "blue").
- *  Returns null if the call fails or the token lacks the `profile` scope. */
-export async function fetchHackatimeTrustLevel(accessToken: string): Promise<string | null> {
+export type HackatimeTrust = {
+    /** e.g. "red" | "yellow" | "green" | "blue". Hackatime does not document the full
+     *  set, so treat it as an opaque string rather than assuming a value exists. */
+    level: string | null;
+    /** The numeric companion to `level` (Hackatime's own example shows green = 2).
+     *  Deliberately not persisted — read live when a reviewer opens a project. */
+    value: number | null;
+};
+
+/** Fetch the user's Hackatime trust from GET /api/v1/authenticated/me.
+ *  Covered by the `profile` scope, which Hackatime grants by default, so any token
+ *  we already hold can read it.
+ *  Docs: https://hackatime.hackclub.com/docs/oauth/oauth-apps */
+export async function fetchHackatimeTrust(accessToken: string): Promise<HackatimeTrust> {
     try {
         const res = await fetch(`${BASE}/api/v1/authenticated/me`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
-        if (!res.ok) return null;
-        const data = (await res.json()) as { trust_factor?: { trust_level?: string } };
-        return data.trust_factor?.trust_level ?? null;
+        if (!res.ok) return { level: null, value: null };
+        const data = (await res.json()) as {
+            trust_factor?: { trust_level?: string; trust_value?: number };
+        };
+        const tf = data.trust_factor;
+        return {
+            level: tf?.trust_level ?? null,
+            value: typeof tf?.trust_value === "number" ? tf.trust_value : null,
+        };
     } catch {
-        return null;
+        // Null is meaningful downstream: "unknown", never "untrusted".
+        return { level: null, value: null };
     }
+}
+
+/** Back-compat wrapper. The login and OAuth-callback paths only want the level, and
+ *  `syncBanFromTrust` keys its ban decision off that string alone. */
+export async function fetchHackatimeTrustLevel(accessToken: string): Promise<string | null> {
+    return (await fetchHackatimeTrust(accessToken)).level;
 }

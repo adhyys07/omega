@@ -8,6 +8,9 @@
     submitter_email: string | null
     submitter_slack_id: string | null
     submitter_slack_username: string | null
+    /** Reviewer-only: the submitter's last-known Hackatime trust level. Served by the
+     *  review API alone — no builder-facing endpoint returns this. */
+    submitter_trust?: string | null
     status: string
     first_name: string | null
     last_name: string | null
@@ -26,6 +29,10 @@
     approved_hours?: number | null
     payout_tokens?: number | null
     paid_at?: string | null
+    /** Hard-reject lock: no new project may be submitted against this pitch until an
+     *  admin lifts it. Only an admin sees the unlock control. */
+    resubmit_blocked?: boolean
+    resubmit_blocked_reason?: string | null
     /** Reviewer-only duplicate-idea verdict. Never sent to the pitch's author. */
     duplicate_check?: {
       checkedAt: string
@@ -54,6 +61,54 @@
   let loadingGh = $state(false)
   let showReadme = $state(false)
 
+  // Same colours the admin user table uses, so one level reads the same everywhere.
+  const TRUST_COLOR: Record<string, string> = {
+    red: '#c2451a', yellow: '#b07410', green: '#3d7a40', blue: '#2f6db0',
+  }
+
+  /** Live Hackatime trust for the open project's submitter. Reviewer-only: it is
+   *  rendered on the project detail and nowhere a builder can reach. */
+  let trust = $state<{ linked: boolean; level: string | null; value: number | null } | null>(null)
+  let trustFor = ''
+
+  async function loadTrust(id: string) {
+    trust = null
+    trustFor = id
+    if (kind !== 'projects') return
+    try {
+      const r = await apiFetch(`/api/review/submissions/${id}/trust`)
+      if (!r.ok) return
+      const data = await r.json()
+      // A slow reply for a project the reviewer has already navigated away from must
+      // not overwrite the one they are looking at now.
+      if (trustFor === id) trust = data
+    } catch {
+      // Leave `trust` null — the stored level from the list still renders.
+    }
+  }
+
+  /** Lifts a hard reject's resubmit lock. Admin-only server-side; the panel has no
+   *  role to check against, so a plain reviewer gets the server's 403 message here. */
+  async function unblock() {
+    if (!selected) return
+    actionErr = ''
+    actionMsg = ''
+    acting = true
+    try {
+      const r = await apiFetch(`/api/review/submissions/${selected.id}/unblock`, { method: 'POST' })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.error ?? 'Could not unlock')
+      selected.resubmit_blocked = false
+      const inList = subs.find((s) => s.id === selected!.id)
+      if (inList) inList.resubmit_blocked = false
+      actionMsg = 'Resubmission unlocked ✓'
+    } catch (e) {
+      actionErr = e instanceof Error ? e.message : 'Could not unlock'
+    } finally {
+      acting = false
+    }
+  }
+
   type Badge = { slug: string; label: string; icon: string; criteria: string; bg: string; color: string }
   type TierDef = { slug: string; label: string; icon: string; multiplier: number; blurb: string; bg: string; color: string }
 
@@ -64,7 +119,7 @@
   let acting = $state(false)
   let feedback = $state('')
   let internalJustification = $state('')
-  let decisionAction = $state<'approve' | 'reject' | 'request_changes'>('approve')
+  let decisionAction = $state<'approve' | 'reject' | 'hard_reject' | 'request_changes'>('approve')
   let requestedChangesCount = $state<number | null>(null)
   let actionMsg = $state('')
   let actionErr = $state('')
@@ -147,8 +202,12 @@
     pending: 'background:rgba(255,179,71,.22); color:#b07410;',
     changes_requested: 'background:rgba(47,109,176,.14); color:#2f6db0;',
     withdrawn: 'background:rgba(28,23,20,.10); color:#5b4f44;',
+    hard_rejected: 'background:rgba(179,38,30,.2); color:#8f1d17;',
   }
-  const STATUS_LABEL: Record<string, string> = { changes_requested: 'changes req.' }
+  const STATUS_LABEL: Record<string, string> = {
+    changes_requested: 'changes req.',
+    hard_rejected: 'rejected · blocked',
+  }
 
   /** Shared look for the repo / demo / video / readme row. */
   const btn = `
@@ -283,6 +342,7 @@
 
     loadCounterpart(kind, s.id)   // independent of the thread; don't await
     loadGithub(s.id)              // no-ops for pitches, which have no repo
+    loadTrust(s.id)               // projects only; falls back to the stored level
 
     if (!s.hasThread) return
     loadingThread = true
@@ -337,7 +397,7 @@
     }
   }
 
-  async function act(action: 'approve' | 'reject' | 'request_changes') {
+  async function act(action: 'approve' | 'reject' | 'hard_reject' | 'request_changes') {
     if (!selected) return
     actionErr = ''
     actionMsg = ''
@@ -349,6 +409,12 @@
     }
     if (action === 'request_changes' && (requestedChangesCount == null || requestedChangesCount < 1)) {
       actionErr = 'Enter how many changes are required.'
+      return
+    }
+
+    // The builder cannot lift this themselves, so it must come with a reason they read.
+    if (action === 'hard_reject' && !feedback.trim()) {
+      actionErr = 'Explain the block — the builder sees this.'
       return
     }
 
@@ -382,6 +448,12 @@
       selected.status = data.status
       const inList = subs.find((s) => s.id === selected!.id)
       if (inList) inList.status = data.status
+      // Reflect the lock without a reload, so the unlock control appears immediately.
+      if (action === 'hard_reject') {
+        selected.resubmit_blocked = true
+        selected.resubmit_blocked_reason = feedbackForAction
+        if (inList) inList.resubmit_blocked = true
+      }
       // Reflect what was just paid, so the bar shows it without a reload.
       if (data.payout) {
         selected.tier = data.payout.tier
@@ -587,6 +659,21 @@
               {#if selected.submitter_email} · {selected.submitter_email}{/if}
               {#if selected.created_at} · <span title="Submitted">🕘 {fmtDate(selected.created_at)}</span>{/if}
               {#if selected.hackatime_hours} · {selected.hackatime_hours}h{/if}
+              {#if kind === 'projects' && (trust?.level ?? selected.submitter_trust)}
+                {@const lvl = String(trust?.level ?? selected.submitter_trust ?? '')}
+                {@const c = TRUST_COLOR[lvl] ?? '#5b4f44'}
+                ·
+                <span
+                  title={trust?.level
+                    ? `Hackatime trust, read just now${trust.value != null ? ` — trust value ${trust.value}` : ''}`
+                    : 'Hackatime trust as of this builder’s last login'}
+                  style="display:inline-flex; align-items:center; gap:4px; font-weight:700; color:{c};"
+                >
+                  <span style="width:8px; height:8px; border-radius:50%; background:{c}; border:1px solid #1c1714;"></span>{lvl}{#if trust?.value != null}&nbsp;({trust.value}){/if}
+                </span>
+              {:else if kind === 'projects' && trust && !trust.linked}
+                · <span style="color:#5b4f44;" title="This builder has never connected Hackatime">no Hackatime</span>
+              {/if}
             </div>
           </div>
 
@@ -736,6 +823,30 @@
           {/if}
         </div>
 
+        {#if selected.resubmit_blocked}
+          <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28); background:rgba(179,38,30,.06);">
+            <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#b3261e; margin-bottom:8px;">
+              🔒 Resubmission blocked
+            </div>
+            {#if selected.resubmit_blocked_reason}
+              <p style="margin:0 0 10px; font-family:'Space Grotesk',sans-serif; font-size:.82rem; line-height:1.55; color:#5b4f44;">{selected.resubmit_blocked_reason}</p>
+            {/if}
+            <p style="margin:0 0 10px; font-family:'Space Grotesk',sans-serif; font-size:.74rem; color:#5b4f44;">
+              No new project can be submitted against this pitch until this is lifted. Admins only.
+            </p>
+            <button
+              onclick={unblock}
+              disabled={acting}
+              style="background:#3d7a40; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:8px 16px; font-family:'Syne',sans-serif; font-weight:800; font-size:.78rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
+            >🔓 Unlock resubmission</button>
+            {#if actionErr}
+              <span style="margin-left:10px; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#b3261e;">{actionErr}</span>
+            {:else if actionMsg}
+              <span style="margin-left:10px; font-family:'Space Grotesk',sans-serif; font-size:.78rem; font-weight:700; color:#3d7a40;">{actionMsg}</span>
+            {/if}
+          </div>
+        {/if}
+
         {#if selected.status === 'pending' || selected.status === 'changes_requested'}
           <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28);">
             <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--orange); margin-bottom:8px;">
@@ -752,6 +863,7 @@
                   <option value="approve">Approve</option>
                   <option value="request_changes">Request changes</option>
                   <option value="reject">Reject</option>
+                  <option value="hard_reject">Hard reject (block resubmission)</option>
                 </select>
               </label>
               <div style="font-family:'Space Grotesk',sans-serif; font-size:.74rem; color:#5b4f44;">
@@ -886,9 +998,12 @@
               <button
                 onclick={() => act(decisionAction)}
                 disabled={acting}
-                style="background:{decisionAction === 'approve' ? '#3d7a40' : decisionAction === 'request_changes' ? '#2f6db0' : '#b3261e'}; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
+                style="background:{decisionAction === 'approve' ? '#3d7a40' : decisionAction === 'request_changes' ? '#2f6db0' : decisionAction === 'hard_reject' ? '#8f1d17' : '#b3261e'}; color:#fff; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:9px 18px; font-family:'Syne',sans-serif; font-weight:800; font-size:.8rem; cursor:{acting ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 #1c1714; opacity:{acting ? '.6' : '1'};"
               >
-                {decisionAction === 'approve' ? 'Approve' : decisionAction === 'request_changes' ? 'Send changes request' : 'Reject'}
+                {decisionAction === 'approve' ? 'Approve'
+                  : decisionAction === 'request_changes' ? 'Send changes request'
+                  : decisionAction === 'hard_reject' ? 'Hard reject & block'
+                  : 'Reject'}
               </button>
 
               {#if actionErr}
