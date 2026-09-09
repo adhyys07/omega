@@ -381,7 +381,15 @@ function submitterMention(identity: SubmitterIdentity): string {
 function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, identity: SubmitterIdentity, actor?: string): unknown[] {
     const isPitch = kind === 'pitch';
     const byLine = submitterMention(identity);
-    const slackUsername = identity.slack_username ? `@${identity.slack_username.replace(/^@/, '')}` : '—';
+    // Slack only linkifies <@U…>. A literal "@handle" renders as dead plain text, which
+    // is why this field showed an unclickable @name while the thread greeting — built
+    // from the same submitterMention — pinged correctly. Fall back to the written-out
+    // handle only when there is no Slack id to mention.
+    const slackUsername = identity.slack_id
+        ? byLine
+        : identity.slack_username
+            ? `@${identity.slack_username.replace(/^@/, '')}`
+            : '—';
 
     const blocks: unknown[] = [
         {

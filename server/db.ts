@@ -39,6 +39,20 @@ export async function setSubmissionAssessment(id: string, a: Assessment): Promis
     });
 }
 
+export type WalletEvent = {
+    sub: string;
+    delta: number;
+    balance: number;
+    reason: string | null;
+    admin_sub: string | null;
+};
+
+type WalletNotifier = (event: WalletEvent) => void;
+let walletNotifier: WalletNotifier | null = null;
+export function onWalletChange(fn: WalletNotifier | null): void {
+    walletNotifier = fn;
+}
+
 export type PayoutResult =
     | { ok: true; tokens: number; alreadyPaid: false }
     | { ok: true; tokens: number; alreadyPaid: true }
@@ -262,6 +276,7 @@ export async function payBadgeTokens(
 
     return { ok: true, newlyPaid, tokens };
 }
+
 
 const now = () => new Date().toISOString();
 const bool = (v: unknown): boolean => v === true;
@@ -500,7 +515,13 @@ export async function listBirthdaysToday(): Promise<Row[]> {
 }
 
 
-export async function adjustUserTokens(sub: string, delta: number, reason: string | null, adminSub: string | null): Promise<{ok : true; tokens: number} | {ok: false; error: string}> {
+export async function adjustUserTokens(
+    sub: string,
+    delta: number,
+    reason: string | null,
+    adminSub: string | null,
+    opts: { notify?: boolean } = {},
+): Promise<{ ok: true; tokens: number } | { ok: false; error: string }> {
     // Airtable has no transactions or row locks (the Postgres version used
     // SELECT ... FOR UPDATE), so this is read-then-write: two concurrent
     // adjustments to the same user could race. Acceptable at admin-panel scale.
@@ -517,8 +538,15 @@ export async function adjustUserTokens(sub: string, delta: number, reason: strin
         reason: reason || null,
         admin_sub: adminSub ?? null,
     });
+
+    // Fire-and-forget. The write has already committed; a Slack outage must never
+    // turn a successful token change into a failure. The notifier owns its errors.
+    if (opts.notify !== false) {
+        walletNotifier?.({ sub, delta, balance: next, reason, admin_sub: adminSub });
+    }
     return { ok: true, tokens: next };
 }
+
 
 /** Every token grant and deduction ever recorded. Positive deltas are what the
  *  program has actually committed to paying for; negatives are shop spends. */

@@ -16,9 +16,11 @@ import reviewRoutes from './review.ts'
 import pitchRoutes from './pitches.ts'
 import galleryRoutes from './gallery.ts'
 import devRoutes from './dev.ts'
+import {registerNotifiers} from './notify.ts'
 
 const app = Fastify({ logger: true })
 const distDir = path.resolve(process.cwd(), 'dist')
+registerNotifiers(app.log)
 
 const MIME_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',

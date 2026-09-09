@@ -17,8 +17,18 @@ import {
     listSubmissions,
     listPitches,
     listTokenAdjustments,
+    getSlackIdForSub,
 } from "./db.ts";
 import { TIERS, USD_PER_TOKEN, TOKENS_PER_HOUR } from "./tiers.ts";
+import { dmUser } from "./slack.ts";
+
+/** What a new role actually gets them. Keys are the values in ROLES; a role with no
+ *  entry simply gets the headline with no second line. */
+const ROLE_BLURB: Record<string, string> = {
+    admin: 'You now have the admin panel and the review queue.',
+    reviewer: 'You can now review pitches and projects in the review panel.',
+    user: 'Reviewer access has been removed.',
+};
 
 export default async function adminRoutes(app: FastifyInstance) {
     // Gate every admin route: 401 if not signed in, 403 if signed in but not an admin.
@@ -204,13 +214,17 @@ export default async function adminRoutes(app: FastifyInstance) {
             return reply.code(400).send({ error: 'Provide role and/or banned' });
         }
 
+        // Read once, up front: the ban check needs this row, and the role DM below
+        // needs the previous value to tell a real change from a no-op re-save.
+        const target = await getAuthUserBySub(sub);
+        if (!target) return reply.code(404).send({ error: 'User not found' });
+        const previousRole = String(target.role ?? 'user');
+
         // --- Safety checks before a ban can go through ---
         if (b.banned === true) {
             if (requester && requester.sub === sub) {
                 return reply.code(400).send({ error: "You can't ban yourself" });
             }
-            const target = await getAuthUserBySub(sub);
-            if (!target) return reply.code(404).send({ error: 'User not found' });
             const targetIsAdmin =
                 target.role === 'admin' ||
                 isAdmin({ sub, email: target.email ?? undefined, slack_id: target.slack_id ?? undefined });
@@ -235,6 +249,22 @@ export default async function adminRoutes(app: FastifyInstance) {
                 return reply.code(404).send({ error: 'User not found' });
             }
         }
+        if (b.role !== undefined && b.role !== previousRole) {
+            const role = b.role;
+            // Best-effort, like every other Slack side-effect here: the role is already
+            // saved, and a failed DM must not turn that into a 500.
+            void (async () => {
+                try {
+                    const slackId = await getSlackIdForSub(sub);
+                    if (!slackId) return;
+                    const blurb = ROLE_BLURB[role] ? `\n${ROLE_BLURB[role]}` : '';
+                    await dmUser(slackId, `🔑 Your Omega role is now *${role}*.${blurb}`);
+                } catch (err) {
+                    req.log.error(err, 'role change DM failed');
+                }
+            })();
+        }
+
         return { sub, ...(b.role !== undefined && { role: b.role }), ...(b.banned !== undefined && { banned: b.banned }) };
     });
 
