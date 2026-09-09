@@ -397,11 +397,9 @@ function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, identi
                     { type: 'mrkdwn', text: `*Slack:*\n${slackUsername}` },
                     { type: 'mrkdwn', text: `*Email:*\n${identity.email ?? '—'}` },
                 ]
-                : [
+                : [ 
                     { type: 'mrkdwn', text: `*Project:*\n${row.title ?? '—'}` },
-                    { type: 'mrkdwn', text: `*Name:*\n${identity.name ?? byLine}` },
                     { type: 'mrkdwn', text: `*Slack:*\n${slackUsername}` },
-                    { type: 'mrkdwn', text: `*Email:*\n${identity.email ?? '—'}` },
                     { type: 'mrkdwn', text: `*Code:*\n${row.code_url || '—'}` },
                     { type: 'mrkdwn', text: `*Playable:*\n${row.playable_url || '—'}` },
                 ],
@@ -463,6 +461,22 @@ export async function notifySlackOfNewReview(
         text: `New Omega ${label} by ${submitterMention(identity)}`,
         blocks: reviewBlocks(kind, row, 'pending', identity),
     });
+
+    // Open every thread with a word to the builder, so the person who submitted knows
+    // the thread is theirs and where updates will land. Best-effort on purpose: the
+    // caller stores the card's ts, and throwing here would orphan a posted card from
+    // its row — a greeting is never worth that.
+    const noun = kind === 'pitch' ? 'pitch' : 'project';
+    try {
+        await postInThread(
+            data.channel,
+            data.ts,
+            `hey ${submitterMention(identity)} — we've got your ${noun}! Someone should review it soon. Keep an eye on this thread for updates and any changes we ask for.`,
+        );
+    } catch {
+        // The card is what matters; the greeting is a nicety.
+    }
+
     return { channel: data.channel, ts: data.ts };
 }
 
