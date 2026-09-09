@@ -780,6 +780,29 @@ export async function clearResubmitBlock(id: string, admin: string): Promise<Row
     });
 }
 
+/** The reviewers' shared scratch note on a row.
+ *
+ *  Stored alongside everything else, but it must never reach the person who
+ *  submitted it. The guard is that builder-facing readers list their fields
+ *  explicitly — listSubmissionsBySub and listPitchesBySub name every key they
+ *  return, so a new column like this one is invisible there by construction.
+ *  Keep it that way: never spread a raw row into a builder response. */
+export async function setSubmissionInternalNote(id: string, note: string, author: string): Promise<Row | null> {
+    return updateRecord(TABLE.projectSubmissions, id, {
+        internal_note: note,
+        internal_note_by: author,
+        internal_note_at: now(),
+    });
+}
+
+export async function setPitchInternalNote(id: string, note: string, author: string): Promise<Row | null> {
+    return updateRecord(TABLE.pitches, id, {
+        internal_note: note,
+        internal_note_by: author,
+        internal_note_at: now(),
+    });
+}
+
 export async function findResubmitBlock(pitchId: string): Promise<Row | null> {
     if (!pitchId) return null;
     return findOne(

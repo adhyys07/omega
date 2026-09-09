@@ -6,6 +6,7 @@ import {
     approveSubmission, rejectSubmission, requestSubmissionChanges,
     approvePitch, rejectPitch, requestPitchChanges, getSlackIdForSub, type Row,
     hardRejectSubmission, clearResubmitBlock,
+    setSubmissionInternalNote, setPitchInternalNote,
 } from "./db.ts";
 import {
     fetchThreadReplies, postReviewerMessage, dmUser, postInThread, updateReviewCard,
@@ -190,6 +191,35 @@ function actorOf(user: HcUser): Actor {
     return { name: user.name ?? user.sub, slackId: user.slack_id };
 }
 
+/** Saves the reviewers' shared internal note. Reviewer-gated like the rest of the
+ *  panel, and deliberately silent: no Slack post, no DM, no status change. It is a
+ *  note between reviewers, so writing one must not notify the person it is about. */
+function noteHandler(kind: ReviewKind) {
+    return async (req: FastifyRequest, reply: FastifyReply) => {
+        const user = getSessionUser(req)!;
+        const { id } = req.params as { id: string };
+        const note = String((req.body as { note?: unknown })?.note ?? '').trim();
+        if (note.length > 4000) return reply.code(400).send({ error: 'Note is too long' });
+
+        const row = kind === 'pitch' ? await getPitchById(id) : await getSubmissionById(id);
+        if (!row) return reply.code(404).send({ error: 'Not found' });
+
+        // An empty note is a valid save: it is how a reviewer clears a stale one.
+        const author = user.name ?? user.sub;
+        const updated = kind === 'pitch'
+            ? await setPitchInternalNote(id, note, author)
+            : await setSubmissionInternalNote(id, note, author);
+        if (!updated) return reply.code(500).send({ error: 'Could not save the note' });
+
+        return {
+            ok: true,
+            internal_note: note,
+            internal_note_by: author,
+            internal_note_at: updated.internal_note_at ?? null,
+        };
+    };
+}
+
 /** One handler body, registered once per kind. */
 function actionHandler(kind: ReviewKind) {
     return async (req: FastifyRequest, reply: FastifyReply) => {
@@ -322,6 +352,11 @@ export default async function reviewRoutes(app: FastifyInstance) {
                 // The hard-reject lock, so the panel can offer an admin the unlock.
                 resubmit_blocked: !!r.resubmit_blocked,
                 resubmit_blocked_reason: r.resubmit_blocked_reason ?? null,
+                // Reviewer-only. This route is behind requireRole('reviewer'); no
+                // builder-facing endpoint maps these fields.
+                internal_note: r.internal_note ?? null,
+                internal_note_by: r.internal_note_by ?? null,
+                internal_note_at: r.internal_note_at ?? null,
                 created_at: r.created_at ?? null,
             };
         });
@@ -424,6 +459,10 @@ export default async function reviewRoutes(app: FastifyInstance) {
                 last_name: r.last_name ?? null,
                 hasThread: !!(r.slack_channel && r.slack_ts),
                 duplicate_check: parseDuplicateCheck(r.duplicate_check),
+                // Reviewer-only, same as on projects — never sent to the pitch author.
+                internal_note: r.internal_note ?? null,
+                internal_note_by: r.internal_note_by ?? null,
+                internal_note_at: r.internal_note_at ?? null,
                 created_at: r.created_at ?? null,
             };
         });
@@ -670,6 +709,9 @@ export default async function reviewRoutes(app: FastifyInstance) {
 
     // Approve / reject / request-changes, straight from the platform. The static
     // "pitches" segment wins over the :id param, so ordering here is not load-bearing.
+    app.post('/api/review/pitches/:id/note', { preHandler: requireRole('reviewer') }, noteHandler('pitch'));
+    app.post('/api/review/:id/note', { preHandler: requireRole('reviewer') }, noteHandler('project'));
+
     app.post('/api/review/pitches/:id/action', { preHandler: requireRole('reviewer') }, actionHandler('pitch'));
     app.post('/api/review/:id/action', { preHandler: requireRole('reviewer') }, actionHandler('project'));
 }

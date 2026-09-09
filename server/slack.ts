@@ -86,9 +86,21 @@ async function slackProfile(userId: string): Promise<SlackProfile> {
     const hit = userProfileCache.get(userId);
     if (hit) return hit;
     try {
-        const d = await slackGet<{ user?: { real_name?: string; name?: string; profile?: { image_48?: string } } }>('users.info', { user: userId });
+        const d = await slackGet<{ user?: { real_name?: string; name?: string; profile?: {
+            image_48?: string; display_name?: string; display_name_normalized?: string;
+        } } }>('users.info', { user: userId });
         const profile: SlackProfile = {
-            handle: d.user?.name ?? d.user?.real_name ?? userId,
+            // display_name is the name the person actually set. `user.name` is Slack's
+            // legacy handle, derived from their email at signup, and it never reflects a
+            // later rename — using it makes the bot post as "first.last" while the
+            // <@U…> mention beside it renders the real display name.
+            // Slack returns "" (not null) when no display name is set, so this needs
+            // `||`: with `??` an empty string would win and blank the name entirely.
+            handle: d.user?.profile?.display_name?.trim()
+                || d.user?.profile?.display_name_normalized?.trim()
+                || d.user?.name
+                || d.user?.real_name
+                || userId,
             name: d.user?.real_name ?? d.user?.name ?? userId,
             avatar_url: d.user?.profile?.image_48 ?? null,
         };

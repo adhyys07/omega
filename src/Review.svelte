@@ -33,6 +33,11 @@
      *  admin lifts it. Only an admin sees the unlock control. */
     resubmit_blocked?: boolean
     resubmit_blocked_reason?: string | null
+    /** Reviewer/admin-only note. Served by the review API alone — no builder-facing
+     *  endpoint maps it, so it never reaches the person it is about. */
+    internal_note?: string | null
+    internal_note_by?: string | null
+    internal_note_at?: string | null
     /** Reviewer-only duplicate-idea verdict. Never sent to the pitch's author. */
     duplicate_check?: {
       checkedAt: string
@@ -109,6 +114,37 @@
     }
   }
 
+  /** The reviewers' shared note on the open row. Saved explicitly rather than on
+   *  every keystroke, so two reviewers editing at once can't half-overwrite. */
+  let noteDraft = $state('')
+  let savingNote = $state(false)
+  let noteMsg = $state('')
+
+  async function saveNote() {
+    if (!selected) return
+    noteMsg = ''
+    savingNote = true
+    try {
+      const r = await apiFetch(noteUrl(kind, selected.id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: noteDraft }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.error ?? 'Could not save the note')
+      selected.internal_note = data.internal_note
+      selected.internal_note_by = data.internal_note_by
+      selected.internal_note_at = data.internal_note_at
+      const inList = subs.find((s) => s.id === selected!.id)
+      if (inList) inList.internal_note = data.internal_note
+      noteMsg = 'Saved ✓'
+    } catch (e) {
+      noteMsg = e instanceof Error ? e.message : 'Could not save the note'
+    } finally {
+      savingNote = false
+    }
+  }
+
   type Badge = { slug: string; label: string; icon: string; criteria: string; bg: string; color: string }
   type TierDef = { slug: string; label: string; icon: string; multiplier: number; blurb: string; bg: string; color: string }
 
@@ -151,6 +187,8 @@
     k === 'pitches' ? `/api/review/pitches/${id}/message` : `/api/review/${id}/message`
   const actionUrl = (k: Kind, id: string) =>
     k === 'pitches' ? `/api/review/pitches/${id}/action` : `/api/review/${id}/action`
+  const noteUrl = (k: Kind, id: string) =>
+    k === 'pitches' ? `/api/review/pitches/${id}/note` : `/api/review/${id}/note`
   const chosenTier = $derived(tiers.find((t) => t.slug === tier) ?? null)
   // Same formula as the server's computePayout, so the preview and the payout agree.
   const preview = $derived(
@@ -343,6 +381,8 @@
     loadCounterpart(kind, s.id)   // independent of the thread; don't await
     loadGithub(s.id)              // no-ops for pitches, which have no repo
     loadTrust(s.id)               // projects only; falls back to the stored level
+    noteDraft = s.internal_note ?? ''
+    noteMsg = ''
 
     if (!s.hasThread) return
     loadingThread = true
@@ -821,6 +861,35 @@
               {LINK_EMPTY[linkedReason] ?? 'Could not load the linked record.'}
             </div>
           {/if}
+        </div>
+
+        <div style="padding:14px 16px; border-bottom:2px dashed rgba(28,23,20,.28);">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px;">
+            <div style="font-size:.68rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--orange);">
+              🔒 Internal note
+            </div>
+            {#if selected.internal_note_by}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.68rem; color:#5b4f44;">
+                {selected.internal_note_by}{#if selected.internal_note_at} · {fmtDate(selected.internal_note_at)}{/if}
+              </div>
+            {/if}
+          </div>
+          <textarea
+            bind:value={noteDraft}
+            rows="3"
+            placeholder="Reviewers and admins only — the builder never sees this."
+            style="width:100%; box-sizing:border-box; padding:9px 11px; border:2px solid #1c1714; border-radius:9px; font-family:'Space Grotesk',sans-serif; font-size:.82rem; line-height:1.5; background:#fbf4e6; color:#1c1714; resize:vertical;"
+          ></textarea>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+            <button
+              onclick={saveNote}
+              disabled={savingNote || noteDraft === (selected.internal_note ?? '')}
+              style="background:#1c1714; color:#fbf4e6; border:2.5px solid #1c1714; border-radius:10px 7px 11px 6px/6px 11px 7px 10px; padding:7px 15px; font-family:'Syne',sans-serif; font-weight:800; font-size:.76rem; cursor:{savingNote ? 'wait' : 'pointer'}; box-shadow:3px 3px 0 rgba(28,23,20,.25); opacity:{savingNote || noteDraft === (selected.internal_note ?? '') ? '.45' : '1'};"
+            >{savingNote ? 'Saving…' : 'Save note'}</button>
+            {#if noteMsg}
+              <span style="font-family:'Space Grotesk',sans-serif; font-size:.76rem; font-weight:700; color:{noteMsg.includes('✓') ? '#3d7a40' : '#b3261e'};">{noteMsg}</span>
+            {/if}
+          </div>
         </div>
 
         {#if selected.resubmit_blocked}
