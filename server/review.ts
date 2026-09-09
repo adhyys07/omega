@@ -132,9 +132,14 @@ async function applyReviewAction(
                 const fresh = await getSubmissionById(id);
                 if (fresh) await updateReviewCard(kind, ch, ts, fresh, state, actor.slackId ?? undefined);
 
+                // A hard reject's reason is DM-only, on purpose. It is a judgement about
+                // a person rather than feedback the channel needs, and the builder cannot
+                // lift the block themselves — so the thread records only that it happened.
                 const note = action === 'request_changes'
                     ? `✏️ ${mention(actor)} requested changes:\n>${publicNote.replace(/\n/g, '\n>')}`
-                    : `${action === 'approve' ? '✅' : '❌'} ${mention(actor)} ${state} this from the platform.${publicNote ? `\n\n>${publicNote.replace(/\n/g, '\n>')}` : ''}`;
+                    : action === 'hard_reject'
+                        ? `⛔ ${mention(actor)} rejected this and blocked resubmission. The reason went to the builder directly.`
+                        : `${action === 'approve' ? '✅' : '❌'} ${mention(actor)} ${state} this from the platform.${publicNote ? `\n\n>${publicNote.replace(/\n/g, '\n>')}` : ''}`;
                 await postInThread(ch, ts, note);
             }
 
