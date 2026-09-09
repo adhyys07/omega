@@ -292,7 +292,7 @@
     </div>
 
     <div style="font-size:.66rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:#8a7d6d; margin-bottom:clamp(10px,1.8vh,20px);">
-      <a href="https://ysws.hackclub.com/" target="_blank" rel="noopener noreferrer" style="color:inherit; text-decoration:none;">You Ship, We Ship · 2026</a>
+      <a href="https://hackclub.com/programs" target="_blank" rel="noopener noreferrer" style="color:inherit; text-decoration:none;">You Ship, We Ship · 2026</a>
     </div>
 
     <div style="font-family:'Syne',sans-serif; font-weight:800; font-size:min(clamp(4rem,16vw,8.5rem),18vh); letter-spacing:-.008em; line-height:.98; text-shadow:4px 4px 0 rgba(255,69,0,.22), -3px -3px 0 rgba(47,109,176,.16);">

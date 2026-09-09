@@ -31,6 +31,7 @@
     { id: 'orders',   label: '☑ Fulfillment',     href: '/admin/orders' },
     { id: 'items',    label: '▣ Shop items', href: '/admin/items' },
     { id: 'signups',  label: '✉ Signups',    href: '/admin/signups' },
+    { id: 'stages',   label: '⚡ Stage jump', href: '/admin/stages' },
   ]
 
   const tools = $derived(
@@ -48,6 +49,7 @@
     path.startsWith('/admin/orders') ? 'orders' :
     path.startsWith('/admin/items') ? 'items' :
     path.startsWith('/admin/signups') ? 'signups' :
+    path.startsWith('/admin/stages') ? 'stages' :
     'users'
   )
 

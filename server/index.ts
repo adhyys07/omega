@@ -15,6 +15,7 @@ import uploadRoutes from './uploads.ts'
 import reviewRoutes from './review.ts'
 import pitchRoutes from './pitches.ts'
 import galleryRoutes from './gallery.ts'
+import devRoutes from './dev.ts'
 
 const app = Fastify({ logger: true })
 const distDir = path.resolve(process.cwd(), 'dist')
@@ -85,6 +86,13 @@ await app.register(adminRoutes)
 await app.register(reviewRoutes)
 await app.register(pitchRoutes)
 await app.register(galleryRoutes)
+
+// The stage-skipper mounts only when explicitly enabled, so the 404 that
+// Admin.svelte probes for stays the honest answer in every other environment.
+if (process.env.ALLOW_DEV_TOOLS === '1') {
+  await app.register(devRoutes)
+  app.log.warn('dev stage tools are ENABLED (ALLOW_DEV_TOOLS=1)')
+}
 
 
 

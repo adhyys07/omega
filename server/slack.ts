@@ -7,6 +7,7 @@ const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 const REVIEW_CHANNEL = process.env.SLACK_REVIEW_CHANNEL;
 const SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET ?? '';
 const FRONTEND_URL = process.env.FRONTEND_URL ?? '';
+const SLACK_USER_TOKEN = process.env.SLACK_USER_TOKEN;
 
 /** Slack user ids allowed to act on submissions (reuse the admin allowlist). */
 const REVIEWER_IDS = new Set(
@@ -309,6 +310,20 @@ export async function postReviewerMessage(
         text: rendered,
     });
 }
+export async function deleteMessage(channel: string, ts: string): Promise<boolean> {
+    if (!SLACK_USER_TOKEN) return false;
+    const res = await fetch('https://slack.com/api/chat.delete', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${SLACK_USER_TOKEN}`,
+            'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify({ channel, ts }),
+    });
+    const data = (await res.json()) as { ok: boolean; error?: string };
+    if (!data.ok) console.error('chat.delete failed:', data.error);
+    return data.ok;
+}
 
 /** The two things reviewers act on. A pitch is the idea; a project is the build. */
 export type ReviewKind = 'project' | 'pitch';
@@ -400,12 +415,7 @@ function reviewBlocks(kind: ReviewKind, row: Row, state: SubmissionState, identi
     // whole channel — there is no per-viewer visibility in Block Kit — so an in-card
     // Approve button is a button the builder can see on their own pitch. The panel is
     // reviewer-gated, so the card links there instead of acting.
-    if (state === 'pending' || state === 'changes_requested') {
-        blocks.push({
-            type: 'section',
-            text: { type: 'mrkdwn', text: `<${panelLink(kind, String(row.id))}|⚖ *Review in panel* ↗>` },
-        });
-    }
+    
 
     blocks.push({
         type: 'context',

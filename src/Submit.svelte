@@ -356,10 +356,10 @@
         </div>
       {/if}
 
-      <div class="form-split">
-        <div class="form-col">
-          <input bind:value={f.title} placeholder="Project title" required style={inputStyle} />
+      <div class="form-grid">
+        <input bind:value={f.title} placeholder="Project title" required style={inputStyle} />
 
+        <div class="field">
           {#if !htLinked}
             <a
               href="/api/hackatime/login"
@@ -384,77 +384,78 @@
               No Hackatime projects found — you can still submit without selecting one.
             </div>
           {/if}
+        </div>
 
-          <div class="field">
-            <input bind:value={f.screenshot_url} type="url" placeholder="Screenshot URL" style={inputStyle} />
-            <label style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
-              {uploading === 'screenshot_url' ? 'Uploading screenshot…' : '⬆ or upload a screenshot'}
-              <input type="file" accept={ACCEPT.screenshot_url} disabled={busy} onchange={(e) => uploadMedia(e, 'screenshot_url')} style="display:none;" />
-            </label>
+        <div class="field">
+          <input bind:value={f.code_url} onblur={checkRepo} type="url" placeholder="Code URL (repository)" required style={inputStyle} />
+        </div>
+
+        <div class="field">
+          <input bind:value={f.playable_url} type="url" placeholder="Playable / demo URL" required style={inputStyle} />
+        </div>
+
+        {#if ghChecking}
+          <div class="span2" style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; margin-top:-6px;">Checking repo…</div>
+        {:else if ghCheck}
+          <div class="span2" style="margin-top:-6px;">
+            {#if ghCheck.host === 'other'}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44;">Not a GitHub URL — reviewers will open it manually.</div>
+            {:else if ghCheck.error}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410;">⚠️ Couldn't verify: {ghCheck.error}</div>
+            {:else if !ghCheck.isPublic}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b3261e; font-weight:700;">❌ This repo isn't public — reviewers won't be able to open it.</div>
+            {:else if ghCheck.readme && !ghCheck.readme.found}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410;">⚠️ Public, but no README found. Reviewers rely on it.</div>
+            {:else if ghCheck.readme && ghCheck.readme.tooSmall}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410;">⚠️ Public ✓ — but the README looks thin ({ghCheck.readme.chars} chars). Consider expanding it.</div>
+            {:else}
+              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#3d7a40; font-weight:700;">✓ Public repo with a README.</div>
+            {/if}
           </div>
+        {/if}
 
-          <div class="field">
-            <input bind:value={f.demo_video_url} type="url" placeholder="Demo video URL (optional)" style={inputStyle} />
-            <label style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
-              {#if compressing}
-                Compressing video… {Math.round(compressProgress * 100)}%
-              {:else if uploading === 'demo_video_url'}
-                Uploading video…
-              {:else}
-                ⬆ or upload a video (max 64MB)
-              {/if}
-              <input type="file" accept={ACCEPT.demo_video_url} disabled={busy} onchange={(e) => uploadMedia(e, 'demo_video_url')} style="display:none;" />
-            </label>
+        <!-- The two prose fields share a row rather than stacking: they are the
+             tallest things here, and stacking them is what pushed the form past
+             the viewport. -->
+        <textarea bind:value={f.description} placeholder="Describe what you built" rows="3" required class="description" style={inputStyle}></textarea>
+
+        <div class="ai-block">
+          <label for="ai_disclosure" style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#1c1714; margin-bottom:4px;">
+            🤖 AI use <span style="color:var(--orange);">*</span>
+          </label>
+          <textarea
+            id="ai_disclosure"
+            bind:value={f.ai_disclosure}
+            rows="2"
+            required
+            placeholder={'e.g. "Used Claude for debugging and boilerplate. Wrote the actual app logic myself."\n\nDidn\'t use any? Just write "None".'}
+            style={inputStyle}
+          ></textarea>
+          <div class="ai-help" style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44;">
+            Keep it short and specific.
           </div>
         </div>
 
-        <div class="form-col">
-          <div class="url-row">
-            <div class="field url-code">
-              <input bind:value={f.code_url} onblur={checkRepo} type="url" placeholder="Code URL (repository)" required style={inputStyle} />
-            </div>
+        <div class="field">
+          <input bind:value={f.screenshot_url} type="url" placeholder="Screenshot URL" style={inputStyle} />
+          <label style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
+            {uploading === 'screenshot_url' ? 'Uploading screenshot…' : '⬆ or upload a screenshot'}
+            <input type="file" accept={ACCEPT.screenshot_url} disabled={busy} onchange={(e) => uploadMedia(e, 'screenshot_url')} style="display:none;" />
+          </label>
+        </div>
 
-            <div class="field url-demo">
-              <input bind:value={f.playable_url} type="url" placeholder="Playable / demo URL" required style={inputStyle} />
-            </div>
-          </div>
-
-          {#if ghChecking}
-            <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; margin-top:-6px;">Checking repo…</div>
-          {:else if ghCheck}
-            {#if ghCheck.host === 'other'}
-              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44; margin-top:-6px;">Not a GitHub URL — reviewers will open it manually.</div>
-            {:else if ghCheck.error}
-              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Couldn't verify: {ghCheck.error}</div>
-            {:else if !ghCheck.isPublic}
-              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b3261e; font-weight:700; margin-top:-6px;">❌ This repo isn't public — reviewers won't be able to open it.</div>
-            {:else if ghCheck.readme && !ghCheck.readme.found}
-              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Public, but no README found. Reviewers rely on it.</div>
-            {:else if ghCheck.readme && ghCheck.readme.tooSmall}
-              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#b07410; margin-top:-6px;">⚠️ Public ✓ — but the README looks thin ({ghCheck.readme.chars} chars). Consider expanding it.</div>
+        <div class="field">
+          <input bind:value={f.demo_video_url} type="url" placeholder="Demo video URL (optional)" style={inputStyle} />
+          <label style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; font-weight:700; color:#5b4f44; cursor:{busy ? 'wait' : 'pointer'};">
+            {#if compressing}
+              Compressing video… {Math.round(compressProgress * 100)}%
+            {:else if uploading === 'demo_video_url'}
+              Uploading video…
             {:else}
-              <div style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#3d7a40; font-weight:700; margin-top:-6px;">✓ Public repo with a README.</div>
+              ⬆ or upload a video (max 60MB)
             {/if}
-          {/if}
-
-          <textarea bind:value={f.description} placeholder="Describe what you built" rows="3" required class="description" style={inputStyle}></textarea>
-
-          <div class="ai-block">
-            <label for="ai_disclosure" style="display:block; font-family:'Space Grotesk',sans-serif; font-size:.82rem; font-weight:700; color:#1c1714; margin-bottom:4px;">
-              🤖 AI use <span style="color:var(--orange);">*</span>
-            </label>
-            <textarea
-              id="ai_disclosure"
-              bind:value={f.ai_disclosure}
-              rows="2"
-              required
-              placeholder={'e.g. "Used Claude for debugging and boilerplate. Wrote the actual app logic myself."\n\nDidn\'t use any? Just write "None".'}
-              style={inputStyle}
-            ></textarea>
-            <div class="ai-help" style="font-family:'Space Grotesk',sans-serif; font-size:.75rem; color:#5b4f44;">
-              Keep it short and specific.
-            </div>
-          </div>
+            <input type="file" accept={ACCEPT.demo_video_url} disabled={busy} onchange={(e) => uploadMedia(e, 'demo_video_url')} style="display:none;" />
+          </label>
         </div>
       </div>
 
@@ -637,17 +638,24 @@
     flex: 1;
   }
 
-  .form-split {
+  /* One even grid rather than two unequal columns each subdivided again — that
+     produced three different field widths on the first row and left the shorter
+     column trailing dead space. Every field now shares one of two equal tracks,
+     and anything that reads as prose spans both. */
+  .form-grid {
     display: grid;
-    grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     align-items: start;
   }
 
-  .form-col {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+  .form-grid > .span2 {
+    grid-column: 1 / -1;
+  }
+
+  /* Direct grid children still need this or a long URL widens its own track and
+     the two columns stop matching. */
+  .form-grid > * {
     min-width: 0;
   }
 
@@ -656,9 +664,13 @@
     max-width: 100%;
   }
 
-  /* Grows into the leftover vertical space on tall screens; `rows` is the floor. */
+  /* Was flex:1 to absorb leftover height inside a flex column; in a grid that does
+     nothing. Height is capped rather than open-ended so the form stays inside the
+     viewport — this row is the page's whole vertical slack. Roughly matches the
+     AI block beside it (label + 2-row textarea + help line). */
   .description {
-    flex: 1;
+    min-height: 92px;
+    height: clamp(92px, 15vh, 132px);
     resize: vertical;
   }
 
@@ -666,18 +678,6 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    min-width: 0;
-  }
-
-  .url-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
-    gap: 8px;
-    align-items: start;
-  }
-
-  .url-code,
-  .url-demo {
     min-width: 0;
   }
 
@@ -799,10 +799,7 @@
     .pane-form {
       display: block;
     }
-    .form-split {
-      grid-template-columns: 1fr;
-    }
-    .url-row {
+    .form-grid {
       grid-template-columns: 1fr;
     }
   }

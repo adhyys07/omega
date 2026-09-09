@@ -697,6 +697,14 @@ export async function listSubmissions(status?: string): Promise<Row[]> {
     );
 }
 
+export async function getSubmissionBySlackTs(ts: string): Promise<Row | null> {
+    return findOne(TABLE.projectSubmissions, `{slack_ts}='${esc(ts)}'`);
+}
+
+export async function getPitchBySlackTs(ts: string): Promise<Row | null> {
+    return findOne(TABLE.pitches, `{slack_ts}='${esc(ts)}'`);
+}
+
 export async function listSubmissionsBySub(sub: string): Promise<Row[]> {
     const rows = await listAll(TABLE.projectSubmissions, {
         filterByFormula: `{user_sub}='${esc(sub)}'`,
@@ -891,10 +899,9 @@ export async function setSubmissionBadges(
 export async function createPitch(input: PitchInput): Promise<Row> {
     const u = await findAuthUser(input.user_sub);
     const [first_name, ...rest] = String(u?.name ?? "").split(" ");
-    return createRecord(TABLE.pitches, {
+    const fields: Record<string, unknown> = {
         user_sub: input.user_sub,
         title: input.title,
-        reference_file_url: input.reference_file_url ?? null,
         description: input.description,
         why: input.why,
         first_name: first_name ?? "",
@@ -903,7 +910,12 @@ export async function createPitch(input: PitchInput): Promise<Row> {
         status: "pending",
         seeded: input.seeded ?? false,
         created_at: now(),
-    });
+    };
+    // Airtable rejects an unknown field name even when the value is null, so a pitch
+    // with no attachment must not mention the column at all. Same shape as the
+    // optional hackatime fields on createSubmission.
+    if (input.reference_file_url) fields.reference_file_url = input.reference_file_url;
+    return createRecord(TABLE.pitches, fields);
 }
 
 export async function getPitchById(id: string): Promise<Row | null> {

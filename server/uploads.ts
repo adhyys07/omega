@@ -28,7 +28,7 @@ const DOC_EXT: Record<string, string> = {
 const EXT: Record<string, string> = { ...IMAGE_EXT, ...VIDEO_EXT, ...DOC_EXT };
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
-const MAX_VIDEO_BYTES = 64 * 1024 * 1024; // 64MB
+const MAX_VIDEO_BYTES = 60 * 1024 * 1024; // 60MB
 const MAX_DOC_BYTES = 16 * 1024 * 1024; // 16MB for documents
 
 export default async function uploadRoutes(app: FastifyInstance) {

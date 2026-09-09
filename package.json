@@ -11,7 +11,8 @@
     "start": "node --import tsx server/index.ts",
         "server": "node --env-file=.env --import tsx server/index.ts",
     "server:watch": "node --env-file=.env --import tsx --watch server/index.ts",
-    "cleanup:review": "node --env-file=.env --import tsx server/cleanup-review-data.ts"
+    "cleanup:review": "node --env-file=.env --import tsx server/cleanup-review-data.ts",
+    "seed:review": "node --env-file=.env --import tsx server/seed-review.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
