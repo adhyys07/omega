@@ -41,6 +41,9 @@ Copy `.env.example` to `.env` and configure the required credentials first. The 
 
 Run checks with `npm run check` and create a production build with `npm run build`.
 
+## AI Usage
+I have used Claude to seed projects, for tests, apart from that I used Claude for design suggestion and changes, it also helped me to write basic backend for slack and admin tools for Omega. I don't recall correctly but I think I have used Codex (cuz my Claude code was over :sob)
+
 ## Community
 
 Join the [Hack Club Slack](https://hackclub.com/slack) and visit `#omega` for help and project updates.

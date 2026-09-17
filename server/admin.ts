@@ -13,7 +13,6 @@ import {
     setAuthUserRole,
     setAuthUserBanned,
     adjustUserTokens,
-    upsertAuthUser,
     listSubmissions,
     listPitches,
     listTokenAdjustments,
